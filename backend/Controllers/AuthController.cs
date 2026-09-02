@@ -1,6 +1,9 @@
+using System.Security.Claims;
 using CareerPilot.Api.Data;
 using CareerPilot.Api.Dtos.Auth;
 using CareerPilot.Api.Models;
+using CareerPilot.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +14,8 @@ namespace CareerPilot.Api.Controllers;
 [Route("api/[controller]")]
 public class AuthController(
     CareerPilotDbContext dbContext,
-    IPasswordHasher<User> passwordHasher) : ControllerBase
+    IPasswordHasher<User> passwordHasher,
+    ITokenService tokenService) : ControllerBase
 {
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest request, CancellationToken cancellationToken)
@@ -89,12 +93,29 @@ public class AuthController(
             return Unauthorized(new { message = "Invalid email or password." });
         }
 
+        var accessToken = tokenService.CreateAccessToken(user);
+
         return Ok(new
         {
             user.Id,
             user.Email,
             user.FirstName,
-            user.LastName
+            user.LastName,
+            AccessToken = accessToken
+        });
+    }
+
+    [Authorize]
+    [HttpGet("me")]
+    public IActionResult Me()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var email = User.FindFirstValue(ClaimTypes.Email);
+
+        return Ok(new
+        {
+            Id = userId,
+            Email = email
         });
     }
 
