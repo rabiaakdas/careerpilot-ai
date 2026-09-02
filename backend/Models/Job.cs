@@ -21,4 +21,6 @@ public class Job
     public DateTime? UpdatedAt { get; set; }
 
     public User? User { get; set; }
+
+    public List<Application> Applications { get; set; } = [];
 }
