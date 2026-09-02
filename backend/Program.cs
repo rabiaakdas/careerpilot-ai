@@ -8,6 +8,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
+const string DevelopmentCorsPolicy = "DevelopmentCorsPolicy";
+
 var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = builder.Configuration.GetConnectionString("CareerPilotDb");
@@ -35,6 +37,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 builder.Services.AddAuthorization();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(DevelopmentCorsPolicy, policy =>
+    {
+        policy.WithOrigins("http://localhost:5173")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
 builder.Services.AddControllers();
 
 var app = builder.Build();
@@ -42,6 +53,11 @@ var app = builder.Build();
 app.UseHttpsRedirection();
 
 app.MapGet("/", () => "CareerPilot AI API is running.");
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors(DevelopmentCorsPolicy);
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
