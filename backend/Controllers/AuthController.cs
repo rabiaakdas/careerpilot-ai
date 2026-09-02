@@ -61,6 +61,43 @@ public class AuthController(
         });
     }
 
+    [HttpPost("login")]
+    public async Task<IActionResult> Login(LoginRequest request, CancellationToken cancellationToken)
+    {
+        var email = NormalizeEmail(request.Email);
+        var password = request.Password;
+
+        ValidateLoginRequest(email, password);
+
+        if (!ModelState.IsValid)
+        {
+            return ValidationProblem(ModelState);
+        }
+
+        var user = await dbContext.Users
+            .FirstOrDefaultAsync(user => user.Email == email, cancellationToken);
+
+        if (user is null)
+        {
+            return Unauthorized(new { message = "Invalid email or password." });
+        }
+
+        var passwordResult = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, password!);
+
+        if (passwordResult == PasswordVerificationResult.Failed)
+        {
+            return Unauthorized(new { message = "Invalid email or password." });
+        }
+
+        return Ok(new
+        {
+            user.Id,
+            user.Email,
+            user.FirstName,
+            user.LastName
+        });
+    }
+
     private void ValidateRegisterRequest(string email, string? password, string? firstName, string? lastName)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -85,6 +122,19 @@ public class AuthController(
         if (string.IsNullOrWhiteSpace(lastName))
         {
             ModelState.AddModelError(nameof(RegisterRequest.LastName), "Last name is required.");
+        }
+    }
+
+    private void ValidateLoginRequest(string email, string? password)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            ModelState.AddModelError(nameof(LoginRequest.Email), "Email is required.");
+        }
+
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            ModelState.AddModelError(nameof(LoginRequest.Password), "Password is required.");
         }
     }
 
