@@ -21,3 +21,12 @@ careerpilot-ai/
 ├── .gitignore
 └── README.md
 ```
+
+## Development Configuration
+
+PostgreSQL connection string gibi secret bilgiler repository'ye yazilmaz. Development ortaminda connection string'i User Secrets ile saglayabilirsin:
+
+```powershell
+cd backend
+dotnet user-secrets set "ConnectionStrings:CareerPilotDb" "Host=localhost;Port=5432;Database=careerpilot_ai;Username=your_username;Password=your_password"
+```
