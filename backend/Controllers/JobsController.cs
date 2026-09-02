@@ -2,6 +2,7 @@ using System.Security.Claims;
 using CareerPilot.Api.Data;
 using CareerPilot.Api.Dtos.Jobs;
 using CareerPilot.Api.Models;
+using CareerPilot.Api.Services.AI;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,9 @@ namespace CareerPilot.Api.Controllers;
 [Authorize]
 [ApiController]
 [Route("api/jobs")]
-public class JobsController(CareerPilotDbContext dbContext) : ControllerBase
+public class JobsController(
+    CareerPilotDbContext dbContext,
+    IJobAnalysisService jobAnalysisService) : ControllerBase
 {
     [HttpPost]
     public async Task<IActionResult> Create(CreateJobRequest request, CancellationToken cancellationToken)
@@ -159,6 +162,41 @@ public class JobsController(CareerPilotDbContext dbContext) : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("{id:guid}/analyze")]
+    public async Task<IActionResult> Analyze(Guid id, CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var job = await dbContext.Jobs
+            .FirstOrDefaultAsync(job => job.Id == id && job.UserId == userId.Value, cancellationToken);
+
+        if (job is null)
+        {
+            return NotFound();
+        }
+
+        if (string.IsNullOrWhiteSpace(job.Description))
+        {
+            ModelState.AddModelError(nameof(Job.Description), "Job description is required for analysis.");
+            return ValidationProblem(ModelState);
+        }
+
+        try
+        {
+            var analysis = await jobAnalysisService.AnalyzeAsync(job.Description, cancellationToken);
+            return Ok(analysis);
+        }
+        catch (JobAnalysisException exception)
+        {
+            return ToJobAnalysisErrorResponse(exception);
+        }
+    }
+
     private Guid? GetCurrentUserId()
     {
         var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -201,6 +239,28 @@ public class JobsController(CareerPilotDbContext dbContext) : ControllerBase
         var trimmedValue = value?.Trim();
 
         return string.IsNullOrWhiteSpace(trimmedValue) ? null : trimmedValue;
+    }
+
+    private IActionResult ToJobAnalysisErrorResponse(JobAnalysisException exception)
+    {
+        return exception.ErrorType switch
+        {
+            JobAnalysisErrorType.MissingConfiguration => StatusCode(
+                StatusCodes.Status503ServiceUnavailable,
+                new { message = "AI analysis is not configured." }),
+            JobAnalysisErrorType.ProviderError => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI provider could not complete the analysis." }),
+            JobAnalysisErrorType.Timeout => StatusCode(
+                StatusCodes.Status504GatewayTimeout,
+                new { message = "AI analysis timed out." }),
+            JobAnalysisErrorType.InvalidResponse => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI provider returned an invalid analysis response." }),
+            _ => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI analysis failed." })
+        };
     }
 
     private static JobResponse ToResponse(Job job)

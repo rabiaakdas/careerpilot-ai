@@ -30,3 +30,10 @@ PostgreSQL connection string gibi secret bilgiler repository'ye yazilmaz. Develo
 cd backend
 dotnet user-secrets set "ConnectionStrings:CareerPilotDb" "Host=localhost;Port=5432;Database=careerpilot_ai;Username=your_username;Password=your_password"
 ```
+
+AI job analysis icin OpenAI API key de User Secrets ile verilmelidir:
+
+```powershell
+cd backend
+dotnet user-secrets set "AI:ApiKey" "your_openai_api_key"
+```

@@ -2,6 +2,7 @@ using CareerPilot.Api.Data;
 using CareerPilot.Api.Models;
 using CareerPilot.Api.Options;
 using CareerPilot.Api.Services;
+using CareerPilot.Api.Services.AI;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -15,12 +16,19 @@ var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("CareerPilotDb");
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
     ?? new JwtOptions();
+var aiOptions = builder.Configuration.GetSection(AIOptions.SectionName).Get<AIOptions>()
+    ?? new AIOptions();
 
 builder.Services.AddDbContext<CareerPilotDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+builder.Services.Configure<AIOptions>(builder.Configuration.GetSection(AIOptions.SectionName));
 builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.AddHttpClient<IJobAnalysisService, JobAnalysisService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(aiOptions.TimeoutSeconds);
+});
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
