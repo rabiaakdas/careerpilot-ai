@@ -17,4 +17,6 @@ public class User
     public List<Job> Jobs { get; set; } = [];
 
     public List<Application> Applications { get; set; } = [];
+
+    public Resume? Resume { get; set; }
 }

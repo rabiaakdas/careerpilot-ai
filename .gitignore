@@ -6,6 +6,14 @@ frontend/dist/
 backend/bin/
 backend/obj/
 
+# Uploaded user files
+backend/uploads/*
+!backend/uploads/
+!backend/uploads/.gitkeep
+!backend/uploads/resumes/
+backend/uploads/resumes/*
+!backend/uploads/resumes/.gitkeep
+
 # Local environment files
 .env
 .env.*

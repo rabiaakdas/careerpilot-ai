@@ -11,6 +11,8 @@ public class CareerPilotDbContext(DbContextOptions<CareerPilotDbContext> options
 
     public DbSet<Application> Applications => Set<Application>();
 
+    public DbSet<Resume> Resumes => Set<Resume>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CareerPilotDbContext).Assembly);
