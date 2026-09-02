@@ -13,4 +13,6 @@ public class User
     public required string LastName { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public List<Job> Jobs { get; set; } = [];
 }
