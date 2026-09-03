@@ -54,3 +54,11 @@ Backend, yuklenen CV metni ile kullaniciya ait bir is ilanini AI ile karsilastir
 ```http
 POST /api/jobs/{id}/match
 ```
+
+## AI Skill Gap Analysis
+
+Backend, yuklenen CV ile kullaniciya ait bir is ilanini karsilastirarak oncelikli beceri aciklarini analiz edebilir.
+
+```http
+POST /api/jobs/{id}/skill-gap
+```

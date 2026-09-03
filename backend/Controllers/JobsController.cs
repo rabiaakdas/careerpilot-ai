@@ -17,6 +17,7 @@ public class JobsController(
     CareerPilotDbContext dbContext,
     IJobAnalysisService jobAnalysisService,
     IResumeJobMatchService resumeJobMatchService,
+    ISkillGapAnalysisService skillGapAnalysisService,
     IResumeTextExtractor resumeTextExtractor,
     IWebHostEnvironment environment,
     ILogger<JobsController> logger) : ControllerBase
@@ -279,6 +280,80 @@ public class JobsController(
         }
     }
 
+    [HttpPost("{id:guid}/skill-gap")]
+    public async Task<IActionResult> AnalyzeSkillGap(Guid id, CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var job = await dbContext.Jobs
+            .FirstOrDefaultAsync(job => job.Id == id && job.UserId == userId.Value, cancellationToken);
+
+        if (job is null)
+        {
+            return NotFound();
+        }
+
+        if (string.IsNullOrWhiteSpace(job.Description))
+        {
+            ModelState.AddModelError(nameof(Job.Description), "Job description is required for skill gap analysis.");
+            return ValidationProblem(ModelState);
+        }
+
+        var resume = await dbContext.Resumes
+            .FirstOrDefaultAsync(resume => resume.UserId == userId.Value, cancellationToken);
+
+        if (resume is null)
+        {
+            return NotFound(new { message = "Resume not found." });
+        }
+
+        var fullPath = GetStoredResumeFileFullPath(resume.FilePath);
+
+        if (fullPath is null || !System.IO.File.Exists(fullPath))
+        {
+            logger.LogError("Resume file is missing or outside the uploads directory for resume {ResumeId}.", resume.Id);
+
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { message = "Resume file is missing on the server." });
+        }
+
+        string resumeText;
+
+        try
+        {
+            resumeText = await resumeTextExtractor.ExtractTextAsync(
+                fullPath,
+                resume.ContentType,
+                cancellationToken);
+        }
+        catch (ResumeTextExtractionException exception)
+        {
+            logger.LogWarning(exception, "Resume text extraction failed for resume {ResumeId}.", resume.Id);
+
+            return ToResumeTextExtractionErrorResponse(exception);
+        }
+
+        try
+        {
+            var analysis = await skillGapAnalysisService.AnalyzeAsync(
+                job.Description,
+                resumeText,
+                cancellationToken);
+
+            return Ok(analysis);
+        }
+        catch (SkillGapAnalysisException exception)
+        {
+            return ToSkillGapAnalysisErrorResponse(exception);
+        }
+    }
+
     private Guid? GetCurrentUserId()
     {
         var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -364,6 +439,28 @@ public class JobsController(
             _ => StatusCode(
                 StatusCodes.Status502BadGateway,
                 new { message = "AI match failed." })
+        };
+    }
+
+    private IActionResult ToSkillGapAnalysisErrorResponse(SkillGapAnalysisException exception)
+    {
+        return exception.ErrorType switch
+        {
+            SkillGapAnalysisErrorType.MissingConfiguration => StatusCode(
+                StatusCodes.Status503ServiceUnavailable,
+                new { message = "AI skill gap analysis is not configured." }),
+            SkillGapAnalysisErrorType.ProviderError => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI provider could not complete the skill gap analysis." }),
+            SkillGapAnalysisErrorType.Timeout => StatusCode(
+                StatusCodes.Status504GatewayTimeout,
+                new { message = "AI skill gap analysis timed out." }),
+            SkillGapAnalysisErrorType.InvalidResponse => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI provider returned an invalid skill gap analysis response." }),
+            _ => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI skill gap analysis failed." })
         };
     }
 

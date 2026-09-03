@@ -35,6 +35,10 @@ builder.Services.AddHttpClient<IResumeJobMatchService, ResumeJobMatchService>(cl
 {
     client.Timeout = TimeSpan.FromSeconds(aiOptions.TimeoutSeconds);
 });
+builder.Services.AddHttpClient<ISkillGapAnalysisService, SkillGapAnalysisService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(aiOptions.TimeoutSeconds);
+});
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
