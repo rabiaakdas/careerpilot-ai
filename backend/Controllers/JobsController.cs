@@ -3,6 +3,7 @@ using CareerPilot.Api.Data;
 using CareerPilot.Api.Dtos.Jobs;
 using CareerPilot.Api.Models;
 using CareerPilot.Api.Services.AI;
+using CareerPilot.Api.Services.Resumes;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,8 +15,15 @@ namespace CareerPilot.Api.Controllers;
 [Route("api/jobs")]
 public class JobsController(
     CareerPilotDbContext dbContext,
-    IJobAnalysisService jobAnalysisService) : ControllerBase
+    IJobAnalysisService jobAnalysisService,
+    IResumeJobMatchService resumeJobMatchService,
+    IResumeTextExtractor resumeTextExtractor,
+    IWebHostEnvironment environment,
+    ILogger<JobsController> logger) : ControllerBase
 {
+    private const string UploadsDirectory = "uploads";
+    private const string ResumesDirectory = "resumes";
+
     [HttpPost]
     public async Task<IActionResult> Create(CreateJobRequest request, CancellationToken cancellationToken)
     {
@@ -197,6 +205,80 @@ public class JobsController(
         }
     }
 
+    [HttpPost("{id:guid}/match")]
+    public async Task<IActionResult> Match(Guid id, CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var job = await dbContext.Jobs
+            .FirstOrDefaultAsync(job => job.Id == id && job.UserId == userId.Value, cancellationToken);
+
+        if (job is null)
+        {
+            return NotFound();
+        }
+
+        if (string.IsNullOrWhiteSpace(job.Description))
+        {
+            ModelState.AddModelError(nameof(Job.Description), "Job description is required for matching.");
+            return ValidationProblem(ModelState);
+        }
+
+        var resume = await dbContext.Resumes
+            .FirstOrDefaultAsync(resume => resume.UserId == userId.Value, cancellationToken);
+
+        if (resume is null)
+        {
+            return NotFound(new { message = "Resume not found." });
+        }
+
+        var fullPath = GetStoredResumeFileFullPath(resume.FilePath);
+
+        if (fullPath is null || !System.IO.File.Exists(fullPath))
+        {
+            logger.LogError("Resume file is missing or outside the uploads directory for resume {ResumeId}.", resume.Id);
+
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { message = "Resume file is missing on the server." });
+        }
+
+        string resumeText;
+
+        try
+        {
+            resumeText = await resumeTextExtractor.ExtractTextAsync(
+                fullPath,
+                resume.ContentType,
+                cancellationToken);
+        }
+        catch (ResumeTextExtractionException exception)
+        {
+            logger.LogWarning(exception, "Resume text extraction failed for resume {ResumeId}.", resume.Id);
+
+            return ToResumeTextExtractionErrorResponse(exception);
+        }
+
+        try
+        {
+            var match = await resumeJobMatchService.MatchAsync(
+                job.Description,
+                resumeText,
+                cancellationToken);
+
+            return Ok(match);
+        }
+        catch (ResumeJobMatchException exception)
+        {
+            return ToResumeJobMatchErrorResponse(exception);
+        }
+    }
+
     private Guid? GetCurrentUserId()
     {
         var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -261,6 +343,63 @@ public class JobsController(
                 StatusCodes.Status502BadGateway,
                 new { message = "AI analysis failed." })
         };
+    }
+
+    private IActionResult ToResumeJobMatchErrorResponse(ResumeJobMatchException exception)
+    {
+        return exception.ErrorType switch
+        {
+            ResumeJobMatchErrorType.MissingConfiguration => StatusCode(
+                StatusCodes.Status503ServiceUnavailable,
+                new { message = "AI match is not configured." }),
+            ResumeJobMatchErrorType.ProviderError => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI provider could not complete the match." }),
+            ResumeJobMatchErrorType.Timeout => StatusCode(
+                StatusCodes.Status504GatewayTimeout,
+                new { message = "AI match timed out." }),
+            ResumeJobMatchErrorType.InvalidResponse => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI provider returned an invalid match response." }),
+            _ => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI match failed." })
+        };
+    }
+
+    private IActionResult ToResumeTextExtractionErrorResponse(ResumeTextExtractionException exception)
+    {
+        return exception.ErrorType switch
+        {
+            ResumeTextExtractionErrorType.NoReadableText => UnprocessableEntity(new
+            {
+                message = "No readable text could be extracted from the resume."
+            }),
+            _ => UnprocessableEntity(new
+            {
+                message = "The resume file could not be read."
+            })
+        };
+    }
+
+    private string? GetStoredResumeFileFullPath(string relativeFilePath)
+    {
+        var uploadDirectory = Path.GetFullPath(
+            Path.Combine(environment.ContentRootPath, UploadsDirectory, ResumesDirectory));
+        var fullPath = Path.GetFullPath(Path.Combine(environment.ContentRootPath, relativeFilePath));
+
+        return IsPathInsideDirectory(fullPath, uploadDirectory)
+            ? fullPath
+            : null;
+    }
+
+    private static bool IsPathInsideDirectory(string filePath, string directoryPath)
+    {
+        var directoryWithSeparator = directoryPath.EndsWith(Path.DirectorySeparatorChar)
+            ? directoryPath
+            : directoryPath + Path.DirectorySeparatorChar;
+
+        return filePath.StartsWith(directoryWithSeparator, StringComparison.OrdinalIgnoreCase);
     }
 
     private static JobResponse ToResponse(Job job)

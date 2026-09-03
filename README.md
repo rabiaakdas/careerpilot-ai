@@ -46,3 +46,11 @@ Giris yapmis kullanici kendi CV metnini su endpoint ile okuyabilir:
 ```http
 GET /api/resumes/me/text
 ```
+
+## AI Resume Job Match
+
+Backend, yuklenen CV metni ile kullaniciya ait bir is ilanini AI ile karsilastirabilir.
+
+```http
+POST /api/jobs/{id}/match
+```
