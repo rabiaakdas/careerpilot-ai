@@ -3,6 +3,7 @@ using CareerPilot.Api.Models;
 using CareerPilot.Api.Options;
 using CareerPilot.Api.Services;
 using CareerPilot.Api.Services.AI;
+using CareerPilot.Api.Services.Resumes;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +26,7 @@ builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<AIOptions>(builder.Configuration.GetSection(AIOptions.SectionName));
 builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.AddScoped<IResumeTextExtractor, ResumeTextExtractor>();
 builder.Services.AddHttpClient<IJobAnalysisService, JobAnalysisService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(aiOptions.TimeoutSeconds);

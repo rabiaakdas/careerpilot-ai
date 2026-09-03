@@ -2,6 +2,7 @@ using System.Security.Claims;
 using CareerPilot.Api.Data;
 using CareerPilot.Api.Dtos.Resumes;
 using CareerPilot.Api.Models;
+using CareerPilot.Api.Services.Resumes;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,7 +14,9 @@ namespace CareerPilot.Api.Controllers;
 [Route("api/resumes")]
 public class ResumesController(
     CareerPilotDbContext dbContext,
-    IWebHostEnvironment environment) : ControllerBase
+    IWebHostEnvironment environment,
+    IResumeTextExtractor resumeTextExtractor,
+    ILogger<ResumesController> logger) : ControllerBase
 {
     private const long MaxFileSize = 5 * 1024 * 1024;
     private const string UploadsDirectory = "uploads";
@@ -132,6 +135,66 @@ public class ResumesController(
         return Ok(ToResponse(resume));
     }
 
+    [HttpGet("me/text")]
+    public async Task<IActionResult> GetMineText(CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var resume = await dbContext.Resumes
+            .FirstOrDefaultAsync(resume => resume.UserId == userId.Value, cancellationToken);
+
+        if (resume is null)
+        {
+            return NotFound();
+        }
+
+        var fullPath = GetStoredFileFullPath(resume.FilePath);
+
+        if (fullPath is null || !System.IO.File.Exists(fullPath))
+        {
+            logger.LogError("Resume file is missing or outside the uploads directory for resume {ResumeId}.", resume.Id);
+
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { message = "Resume file is missing on the server." });
+        }
+
+        try
+        {
+            var text = await resumeTextExtractor.ExtractTextAsync(
+                fullPath,
+                resume.ContentType,
+                cancellationToken);
+
+            return Ok(new ResumeTextResponse
+            {
+                Text = text,
+                CharacterCount = text.Length
+            });
+        }
+        catch (ResumeTextExtractionException exception)
+        {
+            logger.LogWarning(exception, "Resume text extraction failed for resume {ResumeId}.", resume.Id);
+
+            return exception.ErrorType switch
+            {
+                ResumeTextExtractionErrorType.NoReadableText => UnprocessableEntity(new
+                {
+                    message = "No readable text could be extracted from the resume."
+                }),
+                _ => UnprocessableEntity(new
+                {
+                    message = "The resume file could not be read."
+                })
+            };
+        }
+    }
+
     [HttpDelete("me")]
     public async Task<IActionResult> DeleteMine(CancellationToken cancellationToken)
     {
@@ -199,11 +262,9 @@ public class ResumesController(
 
     private void DeleteStoredFile(string relativeFilePath)
     {
-        var uploadDirectory = Path.GetFullPath(
-            Path.Combine(environment.ContentRootPath, UploadsDirectory, ResumesDirectory));
-        var fullPath = Path.GetFullPath(Path.Combine(environment.ContentRootPath, relativeFilePath));
+        var fullPath = GetStoredFileFullPath(relativeFilePath);
 
-        if (!fullPath.StartsWith(uploadDirectory, StringComparison.OrdinalIgnoreCase))
+        if (fullPath is null)
         {
             return;
         }
@@ -217,6 +278,26 @@ public class ResumesController(
         {
             System.IO.File.Delete(fullPath);
         }
+    }
+
+    private string? GetStoredFileFullPath(string relativeFilePath)
+    {
+        var uploadDirectory = Path.GetFullPath(
+            Path.Combine(environment.ContentRootPath, UploadsDirectory, ResumesDirectory));
+        var fullPath = Path.GetFullPath(Path.Combine(environment.ContentRootPath, relativeFilePath));
+
+        return IsPathInsideDirectory(fullPath, uploadDirectory)
+            ? fullPath
+            : null;
+    }
+
+    private static bool IsPathInsideDirectory(string filePath, string directoryPath)
+    {
+        var directoryWithSeparator = directoryPath.EndsWith(Path.DirectorySeparatorChar)
+            ? directoryPath
+            : directoryPath + Path.DirectorySeparatorChar;
+
+        return filePath.StartsWith(directoryWithSeparator, StringComparison.OrdinalIgnoreCase);
     }
 
     private static ResumeResponse ToResponse(Resume resume)

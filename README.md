@@ -37,3 +37,12 @@ AI job analysis icin OpenAI API key de User Secrets ile verilmelidir:
 cd backend
 dotnet user-secrets set "AI:ApiKey" "your_openai_api_key"
 ```
+
+## Resume Text Extraction
+
+Backend, yuklenen PDF ve DOCX CV dosyalarindan metin cikarabilir.
+Giris yapmis kullanici kendi CV metnini su endpoint ile okuyabilir:
+
+```http
+GET /api/resumes/me/text
+```
