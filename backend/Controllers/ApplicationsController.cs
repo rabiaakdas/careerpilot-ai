@@ -97,6 +97,45 @@ public class ApplicationsController(CareerPilotDbContext dbContext) : Controller
         return Ok(applications);
     }
 
+    [HttpGet("kanban")]
+    public async Task<IActionResult> GetKanban(CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var applications = await dbContext.Applications
+            .Where(application => application.UserId == userId.Value)
+            .OrderByDescending(application => application.UpdatedAt ?? application.CreatedAt)
+            .Select(application => new ApplicationKanbanItemResponse
+            {
+                Id = application.Id,
+                JobId = application.JobId,
+                CompanyName = application.Job != null ? application.Job.CompanyName : string.Empty,
+                PositionTitle = application.Job != null ? application.Job.PositionTitle : string.Empty,
+                Status = application.Status.ToString(),
+                AppliedAt = application.AppliedAt,
+                Notes = application.Notes,
+                CreatedAt = application.CreatedAt,
+                UpdatedAt = application.UpdatedAt
+            })
+            .ToListAsync(cancellationToken);
+
+        var response = new ApplicationKanbanResponse
+        {
+            Applied = applications.Where(application => application.Status == nameof(ApplicationStatus.Applied)).ToList(),
+            Interview = applications.Where(application => application.Status == nameof(ApplicationStatus.Interview)).ToList(),
+            Offer = applications.Where(application => application.Status == nameof(ApplicationStatus.Offer)).ToList(),
+            Rejected = applications.Where(application => application.Status == nameof(ApplicationStatus.Rejected)).ToList(),
+            Withdrawn = applications.Where(application => application.Status == nameof(ApplicationStatus.Withdrawn)).ToList()
+        };
+
+        return Ok(response);
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
     {
@@ -116,6 +155,53 @@ public class ApplicationsController(CareerPilotDbContext dbContext) : Controller
         if (application is null)
         {
             return NotFound();
+        }
+
+        return Ok(ToResponse(application));
+    }
+
+    [HttpPatch("{id:guid}/status")]
+    public async Task<IActionResult> UpdateStatus(
+        Guid id,
+        ApplicationStatusUpdateRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        if (request is null)
+        {
+            ModelState.AddModelError(nameof(ApplicationStatusUpdateRequest), "Request body is required.");
+            return ValidationProblem(ModelState);
+        }
+
+        if (!TryParseApplicationStatus(request.Status, out var status))
+        {
+            ModelState.AddModelError(nameof(ApplicationStatusUpdateRequest.Status), "Status is invalid.");
+            return ValidationProblem(ModelState);
+        }
+
+        var application = await dbContext.Applications
+            .Include(application => application.Job)
+            .FirstOrDefaultAsync(application =>
+                application.Id == id && application.UserId == userId.Value,
+                cancellationToken);
+
+        if (application is null)
+        {
+            return NotFound();
+        }
+
+        if (application.Status != status)
+        {
+            application.Status = status;
+            application.UpdatedAt = DateTime.UtcNow;
+
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
 
         return Ok(ToResponse(application));
@@ -258,6 +344,19 @@ public class ApplicationsController(CareerPilotDbContext dbContext) : Controller
         var trimmedValue = value?.Trim();
 
         return string.IsNullOrWhiteSpace(trimmedValue) ? null : trimmedValue;
+    }
+
+    private static bool TryParseApplicationStatus(string? value, out ApplicationStatus status)
+    {
+        status = default;
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return Enum.TryParse(value.Trim(), ignoreCase: true, out status)
+            && Enum.IsDefined(status);
     }
 
     private static ApplicationResponse ToResponse(Application application)

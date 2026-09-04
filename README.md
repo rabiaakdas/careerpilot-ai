@@ -70,3 +70,20 @@ Backend, yuklenen CV ve kullaniciya ait is ilanina gore sirali ve kisisellestiri
 ```http
 POST /api/jobs/{id}/learning-roadmap
 ```
+
+## Application Kanban
+
+Giris yapmis kullanici, basvurularini Kanban kolonlarina gore listeleyebilir ve basvuru durumunu guncelleyebilir.
+
+```http
+GET /api/applications/kanban
+PATCH /api/applications/{id}/status
+```
+
+Kanban kolonlari:
+
+- Applied
+- Interview
+- Offer
+- Rejected
+- Withdrawn
