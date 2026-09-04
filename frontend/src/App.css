@@ -123,6 +123,41 @@
   cursor: pointer;
 }
 
+.secondary-button,
+.danger-button,
+.ghost-button {
+  border-radius: 6px;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-button {
+  border: 1px solid #cbd5e1;
+  color: #111827;
+  background: #ffffff;
+}
+
+.danger-button {
+  border: 1px solid #dc2626;
+  color: #ffffff;
+  background: #dc2626;
+}
+
+.ghost-button {
+  border: 1px solid transparent;
+  color: #4b5563;
+  background: transparent;
+}
+
+.secondary-button:disabled,
+.danger-button:disabled,
+.ghost-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .message {
   margin: 18px 0 0;
   border-radius: 6px;
@@ -141,6 +176,222 @@
   background: #d1fae5;
 }
 
+.jobs-page {
+  width: min(1120px, calc(100% - 36px));
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 32px 0 48px;
+  box-sizing: border-box;
+}
+
+.jobs-header {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.jobs-header h1 {
+  margin: 0;
+  color: #111827;
+  font-size: 34px;
+  line-height: 1.15;
+}
+
+.header-actions,
+.job-actions,
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.jobs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.job-card,
+.detail-panel,
+.form-panel,
+.state-panel,
+.confirm-dialog {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.07);
+}
+
+.job-card {
+  display: grid;
+  gap: 18px;
+  align-content: space-between;
+  min-height: 220px;
+  padding: 18px;
+}
+
+.job-card h2,
+.detail-panel h2,
+.form-panel h2,
+.state-panel h2,
+.confirm-dialog h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.job-company {
+  margin: 0 0 8px;
+  color: #0f766e;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.job-meta,
+.job-date,
+.state-panel p,
+.confirm-dialog p {
+  margin: 10px 0 0;
+  color: #4b5563;
+}
+
+.job-date {
+  font-size: 14px;
+}
+
+.state-panel {
+  margin-top: 20px;
+  padding: 28px;
+  text-align: left;
+}
+
+.detail-panel,
+.form-panel {
+  margin-top: 20px;
+  padding: 24px;
+}
+
+.detail-heading {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 18px;
+}
+
+.detail-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 22px 0;
+}
+
+.detail-list div {
+  min-width: 0;
+}
+
+.detail-list dt {
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.detail-list dd {
+  margin: 6px 0 0;
+  color: #111827;
+  overflow-wrap: anywhere;
+}
+
+.detail-list a {
+  color: #0f766e;
+  font-weight: 700;
+}
+
+.description-block {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 18px;
+}
+
+.description-block h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.description-block p {
+  margin: 0;
+  color: #374151;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.job-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.job-form label {
+  display: grid;
+  gap: 6px;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 650;
+  text-align: left;
+}
+
+.job-form input,
+.job-form textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 11px 12px;
+  box-sizing: border-box;
+  color: #111827;
+  background: #ffffff;
+  font: inherit;
+}
+
+.job-form textarea {
+  resize: vertical;
+}
+
+.job-form input:focus,
+.job-form textarea:focus {
+  border-color: #0f766e;
+  outline: 3px solid rgba(15, 118, 110, 0.18);
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.form-actions {
+  justify-content: flex-end;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(17, 24, 39, 0.48);
+}
+
+.confirm-dialog {
+  width: min(460px, 100%);
+  padding: 22px;
+}
+
 @media (max-width: 840px) {
   .auth-page {
     grid-template-columns: 1fr;
@@ -153,6 +404,30 @@
   }
 
   .name-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .jobs-header,
+  .detail-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .header-actions,
+  .job-actions,
+  .form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .header-actions button,
+  .job-actions button,
+  .form-actions button {
+    width: 100%;
+  }
+
+  .detail-list,
+  .form-row {
     grid-template-columns: 1fr;
   }
 }
