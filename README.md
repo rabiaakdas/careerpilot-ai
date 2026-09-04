@@ -87,3 +87,19 @@ Kanban kolonlari:
 - Offer
 - Rejected
 - Withdrawn
+
+## Dashboard
+
+Giris yapmis kullanici, kariyer ve basvuru durumunu tek endpoint uzerinden ozetleyebilir.
+
+```http
+GET /api/dashboard
+```
+
+Dashboard ozeti:
+
+- Total jobs
+- Total applications
+- Application status distribution
+- Application rate
+- Recent applications
