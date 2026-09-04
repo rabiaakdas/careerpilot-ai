@@ -18,6 +18,7 @@ public class JobsController(
     IJobAnalysisService jobAnalysisService,
     IResumeJobMatchService resumeJobMatchService,
     ISkillGapAnalysisService skillGapAnalysisService,
+    ILearningRoadmapService learningRoadmapService,
     IResumeTextExtractor resumeTextExtractor,
     IWebHostEnvironment environment,
     ILogger<JobsController> logger) : ControllerBase
@@ -354,6 +355,80 @@ public class JobsController(
         }
     }
 
+    [HttpPost("{id:guid}/learning-roadmap")]
+    public async Task<IActionResult> CreateLearningRoadmap(Guid id, CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var job = await dbContext.Jobs
+            .FirstOrDefaultAsync(job => job.Id == id && job.UserId == userId.Value, cancellationToken);
+
+        if (job is null)
+        {
+            return NotFound();
+        }
+
+        if (string.IsNullOrWhiteSpace(job.Description))
+        {
+            ModelState.AddModelError(nameof(Job.Description), "Job description is required for learning roadmap.");
+            return ValidationProblem(ModelState);
+        }
+
+        var resume = await dbContext.Resumes
+            .FirstOrDefaultAsync(resume => resume.UserId == userId.Value, cancellationToken);
+
+        if (resume is null)
+        {
+            return NotFound(new { message = "Resume not found." });
+        }
+
+        var fullPath = GetStoredResumeFileFullPath(resume.FilePath);
+
+        if (fullPath is null || !System.IO.File.Exists(fullPath))
+        {
+            logger.LogError("Resume file is missing or outside the uploads directory for resume {ResumeId}.", resume.Id);
+
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { message = "Resume file is missing on the server." });
+        }
+
+        string resumeText;
+
+        try
+        {
+            resumeText = await resumeTextExtractor.ExtractTextAsync(
+                fullPath,
+                resume.ContentType,
+                cancellationToken);
+        }
+        catch (ResumeTextExtractionException exception)
+        {
+            logger.LogWarning(exception, "Resume text extraction failed for resume {ResumeId}.", resume.Id);
+
+            return ToResumeTextExtractionErrorResponse(exception);
+        }
+
+        try
+        {
+            var roadmap = await learningRoadmapService.CreateAsync(
+                job.Description,
+                resumeText,
+                cancellationToken);
+
+            return Ok(roadmap);
+        }
+        catch (LearningRoadmapException exception)
+        {
+            return ToLearningRoadmapErrorResponse(exception);
+        }
+    }
+
     private Guid? GetCurrentUserId()
     {
         var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -461,6 +536,28 @@ public class JobsController(
             _ => StatusCode(
                 StatusCodes.Status502BadGateway,
                 new { message = "AI skill gap analysis failed." })
+        };
+    }
+
+    private IActionResult ToLearningRoadmapErrorResponse(LearningRoadmapException exception)
+    {
+        return exception.ErrorType switch
+        {
+            LearningRoadmapErrorType.MissingConfiguration => StatusCode(
+                StatusCodes.Status503ServiceUnavailable,
+                new { message = "AI learning roadmap is not configured." }),
+            LearningRoadmapErrorType.ProviderError => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI provider could not complete the learning roadmap." }),
+            LearningRoadmapErrorType.Timeout => StatusCode(
+                StatusCodes.Status504GatewayTimeout,
+                new { message = "AI learning roadmap timed out." }),
+            LearningRoadmapErrorType.InvalidResponse => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI provider returned an invalid learning roadmap response." }),
+            _ => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI learning roadmap failed." })
         };
     }
 

@@ -62,3 +62,11 @@ Backend, yuklenen CV ile kullaniciya ait bir is ilanini karsilastirarak oncelikl
 ```http
 POST /api/jobs/{id}/skill-gap
 ```
+
+## AI Learning Roadmap
+
+Backend, yuklenen CV ve kullaniciya ait is ilanina gore sirali ve kisisellestirilmis ogrenme yol haritasi olusturabilir.
+
+```http
+POST /api/jobs/{id}/learning-roadmap
+```
