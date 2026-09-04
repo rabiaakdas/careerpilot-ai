@@ -450,6 +450,107 @@
   line-height: 1.6;
 }
 
+.interview-panel {
+  margin-top: 24px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 22px;
+  background: #ffffff;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.07);
+}
+
+.compact-heading {
+  margin-top: 0;
+}
+
+.interview-panel h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 24px;
+}
+
+.interview-summary,
+.interview-section {
+  margin-top: 18px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+}
+
+.interview-summary {
+  border-color: #99f6e4;
+  background: #f0fdfa;
+}
+
+.interview-summary h4,
+.interview-section h4 {
+  margin: 0;
+  color: #111827;
+}
+
+.interview-summary p {
+  margin: 10px 0 0;
+  color: #134e4a;
+  line-height: 1.6;
+}
+
+.question-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.question-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px;
+  background: #f9fafb;
+}
+
+.question-card h5 {
+  margin: 0;
+  color: #111827;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.difficulty-badge {
+  display: inline-block;
+  margin: 12px 0 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #111827;
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.question-detail {
+  margin-top: 12px;
+}
+
+.question-detail strong {
+  display: block;
+  color: #374151;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.question-detail p {
+  margin: 6px 0 0;
+  color: #374151;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.question-detail.evidence {
+  border-left: 3px solid #0f766e;
+  padding-left: 10px;
+}
+
 .skill-list,
 .plain-list {
   margin: 12px 0 0;
@@ -581,7 +682,8 @@
   .detail-list,
   .form-row,
   .resume-grid,
-  .match-columns {
+  .match-columns,
+  .question-grid {
     grid-template-columns: 1fr;
   }
 }

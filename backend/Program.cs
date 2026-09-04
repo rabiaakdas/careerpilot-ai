@@ -43,6 +43,10 @@ builder.Services.AddHttpClient<ILearningRoadmapService, LearningRoadmapService>(
 {
     client.Timeout = TimeSpan.FromSeconds(aiOptions.TimeoutSeconds);
 });
+builder.Services.AddHttpClient<IInterviewPrepService, InterviewPrepService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(aiOptions.TimeoutSeconds);
+});
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {

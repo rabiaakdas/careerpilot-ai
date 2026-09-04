@@ -1,5 +1,12 @@
 import type { CreateJobRequest, Job, UpdateJobRequest } from '../types/job'
 import { ApiError, UnauthorizedError } from './apiErrors'
+import type {
+  BehavioralInterviewQuestion,
+  CvBasedInterviewQuestion,
+  InterviewPrepResponse,
+  InterviewQuestionDifficulty,
+  TechnicalInterviewQuestion,
+} from '../types/interview'
 import type { ResumeJobMatchResponse } from '../types/match'
 
 export { ApiError, UnauthorizedError } from './apiErrors'
@@ -44,6 +51,48 @@ interface ResumeJobMatchApiResponse {
   Strengths?: string[]
   recommendations?: string[]
   Recommendations?: string[]
+}
+
+interface InterviewPrepApiResponse {
+  summary?: string
+  Summary?: string
+  technicalQuestions?: TechnicalInterviewQuestionApiResponse[]
+  TechnicalQuestions?: TechnicalInterviewQuestionApiResponse[]
+  behavioralQuestions?: BehavioralInterviewQuestionApiResponse[]
+  BehavioralQuestions?: BehavioralInterviewQuestionApiResponse[]
+  cvBasedQuestions?: CvBasedInterviewQuestionApiResponse[]
+  CvBasedQuestions?: CvBasedInterviewQuestionApiResponse[]
+  questionsToAskEmployer?: string[]
+  QuestionsToAskEmployer?: string[]
+}
+
+interface TechnicalInterviewQuestionApiResponse {
+  question?: string
+  Question?: string
+  whyAsked?: string
+  WhyAsked?: string
+  answerGuidance?: string
+  AnswerGuidance?: string
+  difficulty?: string
+  Difficulty?: string
+}
+
+interface BehavioralInterviewQuestionApiResponse {
+  question?: string
+  Question?: string
+  whyAsked?: string
+  WhyAsked?: string
+  answerGuidance?: string
+  AnswerGuidance?: string
+}
+
+interface CvBasedInterviewQuestionApiResponse {
+  question?: string
+  Question?: string
+  cvEvidence?: string
+  CvEvidence?: string
+  answerGuidance?: string
+  AnswerGuidance?: string
 }
 
 export async function getJobs() {
@@ -91,6 +140,17 @@ export async function matchResumeWithJob(id: string) {
   )
 
   return toResumeJobMatch(response)
+}
+
+export async function getInterviewPrep(id: string) {
+  const response = await sendRequest<InterviewPrepApiResponse>(
+    `/api/jobs/${id}/interview-prep`,
+    {
+      method: 'POST',
+    },
+  )
+
+  return toInterviewPrep(response)
 }
 
 async function sendRequest<TResponse>(
@@ -169,6 +229,72 @@ function toResumeJobMatch(
     recommendations:
       response.recommendations ?? response.Recommendations ?? [],
   }
+}
+
+function toInterviewPrep(response: InterviewPrepApiResponse): InterviewPrepResponse {
+  return {
+    summary: response.summary ?? response.Summary ?? '',
+    technicalQuestions: (
+      response.technicalQuestions ??
+      response.TechnicalQuestions ??
+      []
+    ).map(toTechnicalInterviewQuestion),
+    behavioralQuestions: (
+      response.behavioralQuestions ??
+      response.BehavioralQuestions ??
+      []
+    ).map(toBehavioralInterviewQuestion),
+    cvBasedQuestions: (
+      response.cvBasedQuestions ??
+      response.CvBasedQuestions ??
+      []
+    ).map(toCvBasedInterviewQuestion),
+    questionsToAskEmployer:
+      response.questionsToAskEmployer ?? response.QuestionsToAskEmployer ?? [],
+  }
+}
+
+function toTechnicalInterviewQuestion(
+  response: TechnicalInterviewQuestionApiResponse,
+): TechnicalInterviewQuestion {
+  return {
+    question: response.question ?? response.Question ?? '',
+    whyAsked: response.whyAsked ?? response.WhyAsked ?? '',
+    answerGuidance: response.answerGuidance ?? response.AnswerGuidance ?? '',
+    difficulty: toInterviewQuestionDifficulty(
+      response.difficulty ?? response.Difficulty,
+    ),
+  }
+}
+
+function toBehavioralInterviewQuestion(
+  response: BehavioralInterviewQuestionApiResponse,
+): BehavioralInterviewQuestion {
+  return {
+    question: response.question ?? response.Question ?? '',
+    whyAsked: response.whyAsked ?? response.WhyAsked ?? '',
+    answerGuidance: response.answerGuidance ?? response.AnswerGuidance ?? '',
+  }
+}
+
+function toCvBasedInterviewQuestion(
+  response: CvBasedInterviewQuestionApiResponse,
+): CvBasedInterviewQuestion {
+  return {
+    question: response.question ?? response.Question ?? '',
+    cvEvidence: response.cvEvidence ?? response.CvEvidence ?? '',
+    answerGuidance: response.answerGuidance ?? response.AnswerGuidance ?? '',
+  }
+}
+
+function toInterviewQuestionDifficulty(
+  value: string | undefined,
+): InterviewQuestionDifficulty {
+  if (value === 'Easy' || value === 'Hard') {
+    return value
+  }
+
+  return 'Medium'
 }
 
 async function getApiErrorMessage(response: Response) {

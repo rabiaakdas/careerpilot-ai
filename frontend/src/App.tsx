@@ -1,4 +1,10 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import {
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import './App.css'
 import {
   login,
@@ -9,6 +15,7 @@ import {
 import {
   createJob,
   deleteJob,
+  getInterviewPrep,
   getJobById,
   getJobs,
   matchResumeWithJob,
@@ -22,6 +29,7 @@ import {
   MAX_RESUME_FILE_SIZE,
   uploadResume,
 } from './services/resumeService'
+import type { InterviewPrepResponse } from './types/interview'
 import type { CreateJobRequest, Job, UpdateJobRequest } from './types/job'
 import type { ResumeJobMatchResponse } from './types/match'
 import type { Resume } from './types/resume'
@@ -326,6 +334,10 @@ function JobsPage({
     useState<ResumeJobMatchResponse | null>(null)
   const [matchErrorMessage, setMatchErrorMessage] = useState('')
   const [isMatchLoading, setIsMatchLoading] = useState(false)
+  const [interviewResult, setInterviewResult] =
+    useState<InterviewPrepResponse | null>(null)
+  const [interviewErrorMessage, setInterviewErrorMessage] = useState('')
+  const [isInterviewLoading, setIsInterviewLoading] = useState(false)
 
   const visibleJob = useMemo(() => {
     if (!route.jobId) {
@@ -342,6 +354,8 @@ function JobsPage({
   useEffect(() => {
     setMatchResult(null)
     setMatchErrorMessage('')
+    setInterviewResult(null)
+    setInterviewErrorMessage('')
   }, [route.jobId])
 
   useEffect(() => {
@@ -349,6 +363,8 @@ function JobsPage({
       setSelectedJob(null)
       setMatchResult(null)
       setMatchErrorMessage('')
+      setInterviewResult(null)
+      setInterviewErrorMessage('')
       return
     }
 
@@ -472,6 +488,29 @@ function JobsPage({
     }
   }
 
+  async function handlePrepareInterview(job: Job) {
+    if (isInterviewLoading) {
+      return
+    }
+
+    setIsInterviewLoading(true)
+    setInterviewErrorMessage('')
+    setInterviewResult(null)
+
+    try {
+      setInterviewResult(await getInterviewPrep(job.id))
+    } catch (error) {
+      if (error instanceof UnauthorizedError) {
+        onUnauthorized(error.message)
+        return
+      }
+
+      setInterviewErrorMessage(getInterviewErrorMessage(error))
+    } finally {
+      setIsInterviewLoading(false)
+    }
+  }
+
   function handleJobError(error: unknown) {
     if (error instanceof UnauthorizedError) {
       onUnauthorized(error.message)
@@ -557,10 +596,14 @@ function JobsPage({
           isMatchLoading={isMatchLoading}
           matchResult={matchResult}
           matchErrorMessage={matchErrorMessage}
+          isInterviewLoading={isInterviewLoading}
+          interviewResult={interviewResult}
+          interviewErrorMessage={interviewErrorMessage}
           onBack={() => onNavigate('/jobs')}
           onEdit={(job) => onNavigate(`/jobs/${job.id}/edit`)}
           onDelete={setDeleteCandidate}
           onAnalyzeMatch={handleAnalyzeMatch}
+          onPrepareInterview={handlePrepareInterview}
           onOpenResume={() => onNavigate('/resume')}
         />
       )}
@@ -922,10 +965,14 @@ interface JobDetailProps {
   isMatchLoading: boolean
   matchResult: ResumeJobMatchResponse | null
   matchErrorMessage: string
+  isInterviewLoading: boolean
+  interviewResult: InterviewPrepResponse | null
+  interviewErrorMessage: string
   onBack: () => void
   onEdit: (job: Job) => void
   onDelete: (job: Job) => void
   onAnalyzeMatch: (job: Job) => void
+  onPrepareInterview: (job: Job) => void
   onOpenResume: () => void
 }
 
@@ -935,10 +982,14 @@ function JobDetail({
   isMatchLoading,
   matchResult,
   matchErrorMessage,
+  isInterviewLoading,
+  interviewResult,
+  interviewErrorMessage,
   onBack,
   onEdit,
   onDelete,
   onAnalyzeMatch,
+  onPrepareInterview,
   onOpenResume,
 }: JobDetailProps) {
   if (isLoading) {
@@ -988,6 +1039,14 @@ function JobDetail({
             disabled={isMatchLoading}
           >
             {isMatchLoading ? 'Analyzing...' : 'Analyze CV Match'}
+          </button>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => onPrepareInterview(job)}
+            disabled={isInterviewLoading}
+          >
+            {isInterviewLoading ? 'Preparing...' : 'Prepare for Interview'}
           </button>
         </div>
       </div>
@@ -1040,6 +1099,23 @@ function JobDetail({
       )}
 
       {matchResult && <MatchResultPanel result={matchResult} />}
+
+      {interviewErrorMessage && (
+        <div className="match-error-panel">
+          <p className="message error">{interviewErrorMessage}</p>
+          {isResumeMissingError(interviewErrorMessage) && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={onOpenResume}
+            >
+              Go to Resume
+            </button>
+          )}
+        </div>
+      )}
+
+      {interviewResult && <InterviewPrepPanel result={interviewResult} />}
     </section>
   )
 }
@@ -1117,6 +1193,147 @@ function BulletList({ title, items }: { title: string; items: string[] }) {
         <p className="muted-text">None identified.</p>
       )}
     </section>
+  )
+}
+
+function InterviewPrepPanel({ result }: { result: InterviewPrepResponse }) {
+  return (
+    <section className="interview-panel" aria-labelledby="interview-title">
+      <div className="section-heading compact-heading">
+        <div>
+          <p className="eyebrow">AI Interview Prep</p>
+          <h3 id="interview-title">Personalized Interview Preparation</h3>
+        </div>
+      </div>
+
+      <section className="interview-summary">
+        <h4>Summary</h4>
+        <p>{result.summary || 'No summary returned.'}</p>
+      </section>
+
+      <InterviewQuestionSection
+        title="Technical Questions"
+        items={result.technicalQuestions}
+        renderItem={(item) => (
+          <QuestionCard key={item.question} question={item.question}>
+            <p className="difficulty-badge">Difficulty: {item.difficulty}</p>
+            <QuestionDetail
+              label="Why this may be asked"
+              value={item.whyAsked}
+            />
+            <QuestionDetail
+              label="Answer guidance"
+              value={item.answerGuidance}
+            />
+          </QuestionCard>
+        )}
+      />
+
+      <InterviewQuestionSection
+        title="Behavioral Questions"
+        items={result.behavioralQuestions}
+        renderItem={(item) => (
+          <QuestionCard key={item.question} question={item.question}>
+            <QuestionDetail
+              label="Why this may be asked"
+              value={item.whyAsked}
+            />
+            <QuestionDetail
+              label="Answer guidance"
+              value={item.answerGuidance}
+            />
+          </QuestionCard>
+        )}
+      />
+
+      <InterviewQuestionSection
+        title="CV-Based Questions"
+        items={result.cvBasedQuestions}
+        renderItem={(item) => (
+          <QuestionCard key={item.question} question={item.question}>
+            <QuestionDetail
+              label="CV evidence"
+              value={item.cvEvidence}
+              variant="evidence"
+            />
+            <QuestionDetail
+              label="Answer guidance"
+              value={item.answerGuidance}
+            />
+          </QuestionCard>
+        )}
+      />
+
+      <section className="interview-section">
+        <h4>Questions You Can Ask the Employer</h4>
+        {result.questionsToAskEmployer.length > 0 ? (
+          <ul className="plain-list">
+            {result.questionsToAskEmployer.map((question) => (
+              <li key={question}>{question}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="muted-text">None identified.</p>
+        )}
+      </section>
+    </section>
+  )
+}
+
+function InterviewQuestionSection<TItem>({
+  title,
+  items,
+  renderItem,
+}: {
+  title: string
+  items: TItem[]
+  renderItem: (item: TItem) => ReactNode
+}) {
+  return (
+    <section className="interview-section">
+      <h4>{title}</h4>
+      {items.length > 0 ? (
+        <div className="question-grid">{items.map(renderItem)}</div>
+      ) : (
+        <p className="muted-text">None identified.</p>
+      )}
+    </section>
+  )
+}
+
+function QuestionCard({
+  question,
+  children,
+}: {
+  question: string
+  children: ReactNode
+}) {
+  return (
+    <article className="question-card">
+      <h5>{question}</h5>
+      {children}
+    </article>
+  )
+}
+
+function QuestionDetail({
+  label,
+  value,
+  variant,
+}: {
+  label: string
+  value: string
+  variant?: 'evidence'
+}) {
+  return (
+    <div
+      className={
+        variant === 'evidence' ? 'question-detail evidence' : 'question-detail'
+      }
+    >
+      <strong>{label}</strong>
+      <p>{value}</p>
+    </div>
   )
 }
 
@@ -1427,6 +1644,38 @@ function getMatchErrorMessage(error: unknown) {
 
     if (error.status === 504) {
       return 'AI match timed out. Please try again.'
+    }
+
+    if (error.message) {
+      return error.message
+    }
+  }
+
+  return getErrorMessage(error)
+}
+
+function getInterviewErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 404) {
+      return error.message.toLowerCase().includes('resume')
+        ? 'Upload a resume before preparing for an interview.'
+        : 'Job not found.'
+    }
+
+    if (error.status === 422) {
+      return 'The resume could not be read. It may be a scanned PDF or a damaged file.'
+    }
+
+    if (error.status === 502) {
+      return 'The AI provider could not complete the interview preparation. Please try again.'
+    }
+
+    if (error.status === 503) {
+      return 'AI interview preparation is not configured yet.'
+    }
+
+    if (error.status === 504) {
+      return 'AI interview preparation timed out. Please try again.'
     }
 
     if (error.message) {

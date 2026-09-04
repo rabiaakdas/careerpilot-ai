@@ -19,6 +19,7 @@ public class JobsController(
     IResumeJobMatchService resumeJobMatchService,
     ISkillGapAnalysisService skillGapAnalysisService,
     ILearningRoadmapService learningRoadmapService,
+    IInterviewPrepService interviewPrepService,
     IResumeTextExtractor resumeTextExtractor,
     IWebHostEnvironment environment,
     ILogger<JobsController> logger) : ControllerBase
@@ -429,6 +430,82 @@ public class JobsController(
         }
     }
 
+    [HttpPost("{id:guid}/interview-prep")]
+    public async Task<IActionResult> CreateInterviewPrep(Guid id, CancellationToken cancellationToken)
+    {
+        var userId = GetCurrentUserId();
+
+        if (userId is null)
+        {
+            return Unauthorized();
+        }
+
+        var job = await dbContext.Jobs
+            .FirstOrDefaultAsync(job => job.Id == id && job.UserId == userId.Value, cancellationToken);
+
+        if (job is null)
+        {
+            return NotFound();
+        }
+
+        if (string.IsNullOrWhiteSpace(job.Description))
+        {
+            ModelState.AddModelError(nameof(Job.Description), "Job description is required for interview preparation.");
+            return ValidationProblem(ModelState);
+        }
+
+        var resume = await dbContext.Resumes
+            .FirstOrDefaultAsync(resume => resume.UserId == userId.Value, cancellationToken);
+
+        if (resume is null)
+        {
+            return NotFound(new { message = "Resume not found." });
+        }
+
+        var fullPath = GetStoredResumeFileFullPath(resume.FilePath);
+
+        if (fullPath is null || !System.IO.File.Exists(fullPath))
+        {
+            logger.LogError("Resume file is missing or outside the uploads directory for resume {ResumeId}.", resume.Id);
+
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { message = "Resume file is missing on the server." });
+        }
+
+        string resumeText;
+
+        try
+        {
+            resumeText = await resumeTextExtractor.ExtractTextAsync(
+                fullPath,
+                resume.ContentType,
+                cancellationToken);
+        }
+        catch (ResumeTextExtractionException exception)
+        {
+            logger.LogWarning(exception, "Resume text extraction failed for resume {ResumeId}.", resume.Id);
+
+            return ToResumeTextExtractionErrorResponse(exception);
+        }
+
+        try
+        {
+            var interviewPrep = await interviewPrepService.CreateAsync(
+                job.CompanyName,
+                job.PositionTitle,
+                job.Description,
+                resumeText,
+                cancellationToken);
+
+            return Ok(interviewPrep);
+        }
+        catch (InterviewPrepException exception)
+        {
+            return ToInterviewPrepErrorResponse(exception);
+        }
+    }
+
     private Guid? GetCurrentUserId()
     {
         var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -558,6 +635,28 @@ public class JobsController(
             _ => StatusCode(
                 StatusCodes.Status502BadGateway,
                 new { message = "AI learning roadmap failed." })
+        };
+    }
+
+    private IActionResult ToInterviewPrepErrorResponse(InterviewPrepException exception)
+    {
+        return exception.ErrorType switch
+        {
+            InterviewPrepErrorType.MissingConfiguration => StatusCode(
+                StatusCodes.Status503ServiceUnavailable,
+                new { message = "AI interview preparation is not configured." }),
+            InterviewPrepErrorType.ProviderError => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI provider could not complete the interview preparation." }),
+            InterviewPrepErrorType.Timeout => StatusCode(
+                StatusCodes.Status504GatewayTimeout,
+                new { message = "AI interview preparation timed out." }),
+            InterviewPrepErrorType.InvalidResponse => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI provider returned an invalid interview preparation response." }),
+            _ => StatusCode(
+                StatusCodes.Status502BadGateway,
+                new { message = "AI interview preparation failed." })
         };
     }
 

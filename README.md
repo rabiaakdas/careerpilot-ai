@@ -71,6 +71,16 @@ Backend, yuklenen CV ve kullaniciya ait is ilanina gore sirali ve kisisellestiri
 POST /api/jobs/{id}/learning-roadmap
 ```
 
+## AI Interview Preparation
+
+Backend, yuklenen CV ve kullaniciya ait is ilanina gore kisisellestirilmis mulakat hazirligi olusturabilir.
+
+```http
+POST /api/jobs/{id}/interview-prep
+```
+
+Yanitta teknik sorular, davranissal sorular, CV bazli sorular, cevap rehberligi ve isverene sorulabilecek sorular bulunur.
+
 ## Application Kanban
 
 Giris yapmis kullanici, basvurularini Kanban kolonlarina gore listeleyebilir ve basvuru durumunu guncelleyebilir.
