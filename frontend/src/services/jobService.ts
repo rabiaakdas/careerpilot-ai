@@ -1,4 +1,8 @@
 import type { CreateJobRequest, Job, UpdateJobRequest } from '../types/job'
+import { ApiError, UnauthorizedError } from './apiErrors'
+import type { ResumeJobMatchResponse } from '../types/match'
+
+export { ApiError, UnauthorizedError } from './apiErrors'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
@@ -27,11 +31,19 @@ interface ApiErrorResponse {
   errors?: Record<string, string[]>
 }
 
-export class UnauthorizedError extends Error {
-  constructor(message = 'Your session expired. Please login again.') {
-    super(message)
-    this.name = 'UnauthorizedError'
-  }
+interface ResumeJobMatchApiResponse {
+  matchScore?: number
+  MatchScore?: number
+  summary?: string
+  Summary?: string
+  matchedSkills?: string[]
+  MatchedSkills?: string[]
+  missingSkills?: string[]
+  MissingSkills?: string[]
+  strengths?: string[]
+  Strengths?: string[]
+  recommendations?: string[]
+  Recommendations?: string[]
 }
 
 export async function getJobs() {
@@ -70,6 +82,17 @@ export async function deleteJob(id: string) {
   })
 }
 
+export async function matchResumeWithJob(id: string) {
+  const response = await sendRequest<ResumeJobMatchApiResponse>(
+    `/api/jobs/${id}/match`,
+    {
+      method: 'POST',
+    },
+  )
+
+  return toResumeJobMatch(response)
+}
+
 async function sendRequest<TResponse>(
   path: string,
   options: { method?: string; body?: unknown } = {},
@@ -95,7 +118,7 @@ async function sendRequest<TResponse>(
   }
 
   if (!response.ok) {
-    throw new Error(await getApiErrorMessage(response))
+    throw new ApiError(response.status, await getApiErrorMessage(response))
   }
 
   if (response.status === 204) {
@@ -131,6 +154,20 @@ function toJob(response: JobApiResponse): Job {
     jobUrl: response.jobUrl ?? response.JobUrl ?? null,
     createdAt: response.createdAt ?? response.CreatedAt ?? '',
     updatedAt: response.updatedAt ?? response.UpdatedAt ?? null,
+  }
+}
+
+function toResumeJobMatch(
+  response: ResumeJobMatchApiResponse,
+): ResumeJobMatchResponse {
+  return {
+    matchScore: response.matchScore ?? response.MatchScore ?? 0,
+    summary: response.summary ?? response.Summary ?? '',
+    matchedSkills: response.matchedSkills ?? response.MatchedSkills ?? [],
+    missingSkills: response.missingSkills ?? response.MissingSkills ?? [],
+    strengths: response.strengths ?? response.Strengths ?? [],
+    recommendations:
+      response.recommendations ?? response.Recommendations ?? [],
   }
 }
 

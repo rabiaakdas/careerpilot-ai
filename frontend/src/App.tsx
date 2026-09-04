@@ -11,16 +11,26 @@ import {
   deleteJob,
   getJobById,
   getJobs,
+  matchResumeWithJob,
+  ApiError,
   UnauthorizedError,
   updateJob,
 } from './services/jobService'
+import {
+  deleteResume,
+  getMyResume,
+  MAX_RESUME_FILE_SIZE,
+  uploadResume,
+} from './services/resumeService'
 import type { CreateJobRequest, Job, UpdateJobRequest } from './types/job'
+import type { ResumeJobMatchResponse } from './types/match'
+import type { Resume } from './types/resume'
 
 type AuthMode = 'login' | 'register'
-type JobView = 'list' | 'new' | 'detail' | 'edit'
+type AppView = 'list' | 'new' | 'detail' | 'edit' | 'resume'
 
 interface RouteState {
-  view: JobView
+  view: AppView
   jobId?: string
 }
 
@@ -312,6 +322,10 @@ function JobsPage({
   const [successMessage, setSuccessMessage] = useState('')
   const [deleteCandidate, setDeleteCandidate] = useState<Job | null>(null)
   const [deletingJobId, setDeletingJobId] = useState<string | null>(null)
+  const [matchResult, setMatchResult] =
+    useState<ResumeJobMatchResponse | null>(null)
+  const [matchErrorMessage, setMatchErrorMessage] = useState('')
+  const [isMatchLoading, setIsMatchLoading] = useState(false)
 
   const visibleJob = useMemo(() => {
     if (!route.jobId) {
@@ -326,8 +340,15 @@ function JobsPage({
   }, [])
 
   useEffect(() => {
+    setMatchResult(null)
+    setMatchErrorMessage('')
+  }, [route.jobId])
+
+  useEffect(() => {
     if (!route.jobId) {
       setSelectedJob(null)
+      setMatchResult(null)
+      setMatchErrorMessage('')
       return
     }
 
@@ -428,6 +449,29 @@ function JobsPage({
     }
   }
 
+  async function handleAnalyzeMatch(job: Job) {
+    if (isMatchLoading) {
+      return
+    }
+
+    setIsMatchLoading(true)
+    setMatchErrorMessage('')
+    setMatchResult(null)
+
+    try {
+      setMatchResult(await matchResumeWithJob(job.id))
+    } catch (error) {
+      if (error instanceof UnauthorizedError) {
+        onUnauthorized(error.message)
+        return
+      }
+
+      setMatchErrorMessage(getMatchErrorMessage(error))
+    } finally {
+      setIsMatchLoading(false)
+    }
+  }
+
   function handleJobError(error: unknown) {
     if (error instanceof UnauthorizedError) {
       onUnauthorized(error.message)
@@ -451,6 +495,13 @@ function JobsPage({
             onClick={() => onNavigate('/jobs')}
           >
             Jobs
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => onNavigate('/resume')}
+          >
+            Resume
           </button>
           <button
             type="button"
@@ -492,13 +543,25 @@ function JobsPage({
         />
       )}
 
+      {route.view === 'resume' && (
+        <ResumePage
+          onUnauthorized={onUnauthorized}
+          onBackToJobs={() => onNavigate('/jobs')}
+        />
+      )}
+
       {route.view === 'detail' && (
         <JobDetail
           job={visibleJob}
           isLoading={isDetailLoading && !visibleJob}
+          isMatchLoading={isMatchLoading}
+          matchResult={matchResult}
+          matchErrorMessage={matchErrorMessage}
           onBack={() => onNavigate('/jobs')}
           onEdit={(job) => onNavigate(`/jobs/${job.id}/edit`)}
           onDelete={setDeleteCandidate}
+          onAnalyzeMatch={handleAnalyzeMatch}
+          onOpenResume={() => onNavigate('/resume')}
         />
       )}
 
@@ -532,6 +595,262 @@ interface JobListProps {
   onView: (job: Job) => void
   onEdit: (job: Job) => void
   onDelete: (job: Job) => void
+}
+
+interface ResumePageProps {
+  onUnauthorized: (message?: string) => void
+  onBackToJobs: () => void
+}
+
+function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
+  const [resume, setResume] = useState<Resume | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isUploading, setIsUploading] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
+  const [validationMessage, setValidationMessage] = useState('')
+
+  useEffect(() => {
+    void loadResume()
+  }, [])
+
+  async function loadResume() {
+    setIsLoading(true)
+    setErrorMessage('')
+
+    try {
+      setResume(await getMyResume())
+    } catch (error) {
+      handleResumeError(error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  function handleFileChange(file: File | null) {
+    setSelectedFile(file)
+    setValidationMessage('')
+    setSuccessMessage('')
+
+    if (!file) {
+      return
+    }
+
+    const validationError = validateResumeFile(file)
+
+    if (validationError) {
+      setValidationMessage(validationError)
+    }
+  }
+
+  async function handleUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setErrorMessage('')
+    setSuccessMessage('')
+
+    if (!selectedFile) {
+      setValidationMessage('Choose a PDF or DOCX resume first.')
+      return
+    }
+
+    const validationError = validateResumeFile(selectedFile)
+
+    if (validationError) {
+      setValidationMessage(validationError)
+      return
+    }
+
+    setIsUploading(true)
+
+    try {
+      const uploadedResume = await uploadResume(selectedFile)
+      setResume(uploadedResume)
+      setSelectedFile(null)
+      setValidationMessage('')
+      setSuccessMessage(
+        resume
+          ? 'Resume replaced successfully.'
+          : 'Resume uploaded successfully.',
+      )
+    } catch (error) {
+      handleResumeError(error)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  async function handleDeleteResume() {
+    setIsDeleting(true)
+    setErrorMessage('')
+    setSuccessMessage('')
+
+    try {
+      await deleteResume()
+      setResume(null)
+      setSelectedFile(null)
+      setShowDeleteConfirmation(false)
+      setSuccessMessage('Resume deleted successfully.')
+    } catch (error) {
+      handleResumeError(error)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  function handleResumeError(error: unknown) {
+    if (error instanceof UnauthorizedError) {
+      onUnauthorized(error.message)
+      return
+    }
+
+    setErrorMessage(getResumeErrorMessage(error))
+  }
+
+  return (
+    <section className="resume-layout" aria-labelledby="resume-title">
+      <div className="section-heading">
+        <div>
+          <h2 id="resume-title">Resume</h2>
+          <p>Manage the CV used for AI job matching.</p>
+        </div>
+        <button type="button" className="secondary-button" onClick={onBackToJobs}>
+          Back to Jobs
+        </button>
+      </div>
+
+      {successMessage && <p className="message success">{successMessage}</p>}
+      {errorMessage && <p className="message error">{errorMessage}</p>}
+
+      <div className="resume-grid">
+        <section className="resume-card" aria-label="Current resume">
+          <h3>Current Resume</h3>
+
+          {isLoading ? (
+            <p className="muted-text">Loading resume...</p>
+          ) : resume ? (
+            <dl className="detail-list resume-details">
+              <div>
+                <dt>File Name</dt>
+                <dd>{resume.originalFileName}</dd>
+              </div>
+              <div>
+                <dt>File Size</dt>
+                <dd>{formatFileSize(resume.fileSize)}</dd>
+              </div>
+              <div>
+                <dt>Uploaded</dt>
+                <dd>{formatDateTime(resume.uploadedAt)}</dd>
+              </div>
+              <div>
+                <dt>Updated</dt>
+                <dd>
+                  {resume.updatedAt
+                    ? formatDateTime(resume.updatedAt)
+                    : 'Not updated'}
+                </dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="muted-text">No resume uploaded yet.</p>
+          )}
+
+          {resume && (
+            <button
+              type="button"
+              className="danger-button"
+              onClick={() => setShowDeleteConfirmation(true)}
+              disabled={isDeleting || isUploading}
+            >
+              Delete Resume
+            </button>
+          )}
+        </section>
+
+        <section className="resume-card" aria-label="Resume upload">
+          <h3>{resume ? 'Replace Resume' : 'Upload Resume'}</h3>
+          <form className="job-form" onSubmit={handleUpload}>
+            <label>
+              Resume File
+              <input
+                type="file"
+                accept=".pdf,.docx"
+                onChange={(event) =>
+                  handleFileChange(event.target.files?.[0] ?? null)
+                }
+                disabled={isUploading || isDeleting}
+              />
+            </label>
+
+            <p className="muted-text">
+              PDF or DOCX only. Maximum file size is 5 MB.
+            </p>
+
+            {selectedFile && (
+              <p className="selected-file">
+                Selected: {selectedFile.name} ({formatFileSize(selectedFile.size)})
+              </p>
+            )}
+
+            {validationMessage && (
+              <p className="message error">{validationMessage}</p>
+            )}
+
+            <div className="form-actions">
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={isUploading || Boolean(validationMessage)}
+              >
+                {isUploading
+                  ? 'Uploading...'
+                  : resume
+                    ? 'Replace Resume'
+                    : 'Upload Resume'}
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+
+      {showDeleteConfirmation && resume && (
+        <div className="modal-backdrop">
+          <section
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-resume-title"
+          >
+            <h2 id="delete-resume-title">Delete resume?</h2>
+            <p>
+              Are you sure you want to delete {resume.originalFileName}? AI match
+              analysis will need a new resume.
+            </p>
+            <div className="form-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setShowDeleteConfirmation(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="danger-button"
+                onClick={handleDeleteResume}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </section>
+  )
 }
 
 function JobList({
@@ -600,12 +919,28 @@ function JobList({
 interface JobDetailProps {
   job: Job | null
   isLoading: boolean
+  isMatchLoading: boolean
+  matchResult: ResumeJobMatchResponse | null
+  matchErrorMessage: string
   onBack: () => void
   onEdit: (job: Job) => void
   onDelete: (job: Job) => void
+  onAnalyzeMatch: (job: Job) => void
+  onOpenResume: () => void
 }
 
-function JobDetail({ job, isLoading, onBack, onEdit, onDelete }: JobDetailProps) {
+function JobDetail({
+  job,
+  isLoading,
+  isMatchLoading,
+  matchResult,
+  matchErrorMessage,
+  onBack,
+  onEdit,
+  onDelete,
+  onAnalyzeMatch,
+  onOpenResume,
+}: JobDetailProps) {
   if (isLoading) {
     return <p className="state-panel">Loading job details...</p>
   }
@@ -646,6 +981,14 @@ function JobDetail({ job, isLoading, onBack, onEdit, onDelete }: JobDetailProps)
           >
             Delete
           </button>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => onAnalyzeMatch(job)}
+            disabled={isMatchLoading}
+          >
+            {isMatchLoading ? 'Analyzing...' : 'Analyze CV Match'}
+          </button>
         </div>
       </div>
 
@@ -680,6 +1023,99 @@ function JobDetail({ job, isLoading, onBack, onEdit, onDelete }: JobDetailProps)
         <h3>Description</h3>
         <p>{job.description}</p>
       </div>
+
+      {matchErrorMessage && (
+        <div className="match-error-panel">
+          <p className="message error">{matchErrorMessage}</p>
+          {isResumeMissingError(matchErrorMessage) && (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={onOpenResume}
+            >
+              Go to Resume
+            </button>
+          )}
+        </div>
+      )}
+
+      {matchResult && <MatchResultPanel result={matchResult} />}
+    </section>
+  )
+}
+
+function MatchResultPanel({ result }: { result: ResumeJobMatchResponse }) {
+  const score = Math.min(Math.max(result.matchScore, 0), 100)
+
+  return (
+    <section className="match-panel" aria-labelledby="match-title">
+      <div className="match-score-row">
+        <div>
+          <p className="eyebrow">AI CV Match</p>
+          <h3 id="match-title">Match Score</h3>
+        </div>
+        <strong>{score} / 100</strong>
+      </div>
+
+      <div
+        className="score-bar"
+        role="progressbar"
+        aria-label="Match score"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={score}
+      >
+        <span style={{ width: `${score}%` }} />
+      </div>
+
+      <section className="match-section">
+        <h4>Summary</h4>
+        <p>{result.summary || 'No summary returned.'}</p>
+      </section>
+
+      <div className="match-columns">
+        <SkillList title="Matched Skills" items={result.matchedSkills} />
+        <SkillList title="Missing Skills" items={result.missingSkills} />
+      </div>
+
+      <div className="match-columns">
+        <BulletList title="Strengths" items={result.strengths} />
+        <BulletList title="Recommendations" items={result.recommendations} />
+      </div>
+    </section>
+  )
+}
+
+function SkillList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <section className="match-section">
+      <h4>{title}</h4>
+      {items.length > 0 ? (
+        <ul className="skill-list">
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted-text">None identified.</p>
+      )}
+    </section>
+  )
+}
+
+function BulletList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <section className="match-section">
+      <h4>{title}</h4>
+      {items.length > 0 ? (
+        <ul className="plain-list">
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="muted-text">None identified.</p>
+      )}
     </section>
   )
 }
@@ -870,6 +1306,10 @@ function DeleteConfirmation({
 }
 
 function getRouteState(pathname: string): RouteState {
+  if (pathname === '/resume') {
+    return { view: 'resume' }
+  }
+
   if (pathname === '/jobs/new') {
     return { view: 'new' }
   }
@@ -917,6 +1357,88 @@ function formatDateTime(value: string) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value))
+}
+
+function formatFileSize(value: number) {
+  if (value < 1024) {
+    return `${value} B`
+  }
+
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`
+  }
+
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function validateResumeFile(file: File) {
+  const fileName = file.name.toLowerCase()
+  const isAllowedExtension =
+    fileName.endsWith('.pdf') || fileName.endsWith('.docx')
+
+  if (!isAllowedExtension) {
+    return 'Only PDF and DOCX files are allowed.'
+  }
+
+  if (file.size === 0) {
+    return 'Resume file cannot be empty.'
+  }
+
+  if (file.size > MAX_RESUME_FILE_SIZE) {
+    return 'Resume file must be 5 MB or smaller.'
+  }
+
+  return ''
+}
+
+function getResumeErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 400) {
+      return error.message
+    }
+
+    if (error.status === 404) {
+      return 'No resume uploaded yet.'
+    }
+  }
+
+  return getErrorMessage(error)
+}
+
+function getMatchErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 404) {
+      return error.message.toLowerCase().includes('resume')
+        ? 'Upload a resume before running AI match analysis.'
+        : 'Job not found.'
+    }
+
+    if (error.status === 422) {
+      return 'The resume could not be read. It may be a scanned PDF or a damaged file.'
+    }
+
+    if (error.status === 502) {
+      return 'The AI provider could not complete the match. Please try again.'
+    }
+
+    if (error.status === 503) {
+      return 'AI match is not configured yet.'
+    }
+
+    if (error.status === 504) {
+      return 'AI match timed out. Please try again.'
+    }
+
+    if (error.message) {
+      return error.message
+    }
+  }
+
+  return getErrorMessage(error)
+}
+
+function isResumeMissingError(message: string) {
+  return message.toLowerCase().includes('upload a resume')
 }
 
 function getErrorMessage(error: unknown) {
