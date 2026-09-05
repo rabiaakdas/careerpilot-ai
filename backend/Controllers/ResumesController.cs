@@ -19,6 +19,8 @@ public class ResumesController(
     ILogger<ResumesController> logger) : ControllerBase
 {
     private const long MaxFileSize = 5 * 1024 * 1024;
+    private const long MaxRequestSize = 6 * 1024 * 1024;
+    private const int MaxOriginalFileNameLength = 255;
     private const string UploadsDirectory = "uploads";
     private const string ResumesDirectory = "resumes";
 
@@ -35,6 +37,7 @@ public class ResumesController(
     };
 
     [HttpPost]
+    [RequestSizeLimit(MaxRequestSize)]
     public async Task<IActionResult> Upload([FromForm] IFormFile? file, CancellationToken cancellationToken)
     {
         var userId = GetCurrentUserId();
@@ -248,6 +251,16 @@ public class ResumesController(
 
         var originalFileName = Path.GetFileName(file.FileName);
         var extension = Path.GetExtension(originalFileName);
+
+        if (string.IsNullOrWhiteSpace(originalFileName))
+        {
+            ModelState.AddModelError("File", "Resume file name is required.");
+        }
+
+        if (originalFileName.Length > MaxOriginalFileNameLength)
+        {
+            ModelState.AddModelError("File", $"Resume file name must be {MaxOriginalFileNameLength} characters or fewer.");
+        }
 
         if (!AllowedExtensions.Contains(extension))
         {

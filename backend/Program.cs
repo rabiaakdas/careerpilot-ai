@@ -19,12 +19,17 @@ var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<Jw
     ?? new JwtOptions();
 var aiOptions = builder.Configuration.GetSection(AIOptions.SectionName).Get<AIOptions>()
     ?? new AIOptions();
+var corsOptions = builder.Configuration.GetSection(CorsOptions.SectionName).Get<CorsOptions>()
+    ?? new CorsOptions();
+
+ValidateProductionConfiguration(builder.Configuration, builder.Environment, jwtOptions, aiOptions);
 
 builder.Services.AddDbContext<CareerPilotDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<AIOptions>(builder.Configuration.GetSection(AIOptions.SectionName));
+builder.Services.Configure<CorsOptions>(builder.Configuration.GetSection(CorsOptions.SectionName));
 builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IResumeTextExtractor, ResumeTextExtractor>();
 builder.Services.AddHttpClient<IJobAnalysisService, JobAnalysisService>(client =>
@@ -50,6 +55,8 @@ builder.Services.AddHttpClient<IInterviewPrepService, InterviewPrepService>(clie
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        options.IncludeErrorDetails = false;
+        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -67,7 +74,9 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy(DevelopmentCorsPolicy, policy =>
     {
-        policy.WithOrigins("http://localhost:5173")
+        var allowedOrigins = GetAllowedOrigins(corsOptions, builder.Environment);
+
+        policy.WithOrigins(allowedOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
@@ -76,16 +85,118 @@ builder.Services.AddControllers();
 
 var app = builder.Build();
 
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler(errorApp =>
+    {
+        errorApp.Run(async context =>
+        {
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            context.Response.ContentType = "application/json";
+
+            await context.Response.WriteAsJsonAsync(new
+            {
+                message = "An unexpected error occurred."
+            });
+        });
+    });
+    app.UseHsts();
+}
+
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.TryAdd("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.TryAdd("X-Frame-Options", "DENY");
+    context.Response.Headers.TryAdd("Referrer-Policy", "no-referrer");
+
+    await next();
+});
+
 app.UseHttpsRedirection();
 
 app.MapGet("/", () => "CareerPilot AI API is running.");
-if (app.Environment.IsDevelopment())
-{
-    app.UseCors(DevelopmentCorsPolicy);
-}
+app.UseCors(DevelopmentCorsPolicy);
 
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static string[] GetAllowedOrigins(CorsOptions corsOptions, IWebHostEnvironment environment)
+{
+    var configuredOrigins = corsOptions.AllowedOrigins
+        .Where(origin => !string.IsNullOrWhiteSpace(origin))
+        .Select(origin => origin.Trim().TrimEnd('/'))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    if (configuredOrigins.Length > 0)
+    {
+        return configuredOrigins;
+    }
+
+    return environment.IsDevelopment()
+        ? ["http://localhost:5173"]
+        : [];
+}
+
+static void ValidateProductionConfiguration(
+    IConfiguration configuration,
+    IWebHostEnvironment environment,
+    JwtOptions jwtOptions,
+    AIOptions aiOptions)
+{
+    if (!environment.IsProduction())
+    {
+        return;
+    }
+
+    var missingSettings = new List<string>();
+
+    if (string.IsNullOrWhiteSpace(configuration.GetConnectionString("CareerPilotDb")))
+    {
+        missingSettings.Add("ConnectionStrings:CareerPilotDb");
+    }
+
+    if (string.IsNullOrWhiteSpace(jwtOptions.Issuer))
+    {
+        missingSettings.Add("Jwt:Issuer");
+    }
+
+    if (string.IsNullOrWhiteSpace(jwtOptions.Audience))
+    {
+        missingSettings.Add("Jwt:Audience");
+    }
+
+    if (string.IsNullOrWhiteSpace(jwtOptions.Key))
+    {
+        missingSettings.Add("Jwt:Key");
+    }
+
+    if (jwtOptions.ExpirationMinutes <= 0)
+    {
+        missingSettings.Add("Jwt:ExpirationMinutes");
+    }
+
+    if (string.IsNullOrWhiteSpace(aiOptions.Model))
+    {
+        missingSettings.Add("AI:Model");
+    }
+
+    if (string.IsNullOrWhiteSpace(aiOptions.BaseUrl))
+    {
+        missingSettings.Add("AI:BaseUrl");
+    }
+
+    if (missingSettings.Count > 0)
+    {
+        throw new InvalidOperationException(
+            $"Production configuration is missing required setting(s): {string.Join(", ", missingSettings)}.");
+    }
+
+    if (Encoding.UTF8.GetByteCount(jwtOptions.Key) < 32)
+    {
+        throw new InvalidOperationException("Production JWT signing key is too short.");
+    }
+}

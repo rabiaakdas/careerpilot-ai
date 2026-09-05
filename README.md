@@ -28,15 +28,32 @@ PostgreSQL connection string gibi secret bilgiler repository'ye yazilmaz. Develo
 
 ```powershell
 cd backend
-dotnet user-secrets set "ConnectionStrings:CareerPilotDb" "Host=localhost;Port=5432;Database=careerpilot_ai;Username=your_username;Password=your_password"
+dotnet user-secrets set "ConnectionStrings:CareerPilotDb" "Host=<host>;Port=<port>;Database=<database>;Username=<username>;Password=<password>"
 ```
 
 AI job analysis icin OpenAI API key de User Secrets ile verilmelidir:
 
 ```powershell
 cd backend
-dotnet user-secrets set "AI:ApiKey" "your_openai_api_key"
+dotnet user-secrets set "AI:ApiKey" "<openai-api-key>"
 ```
+
+## Production Configuration / Security
+
+Gercek secret ve credential degerleri source code'a yazilmaz. Production ortaminda gerekli configuration environment variable olarak verilmelidir:
+
+```text
+ConnectionStrings__CareerPilotDb=<postgres-connection-string>
+Jwt__Key=<strong-secret>
+Jwt__Issuer=<issuer>
+Jwt__Audience=<audience>
+AI__ApiKey=<openai-api-key>
+AI__Model=<openai-model>
+AI__BaseUrl=<openai-responses-api-url>
+Cors__AllowedOrigins__0=<frontend-origin>
+```
+
+Production ortaminda `Jwt__Key` bos veya kisa olmamalidir. CORS originleri acik liste olarak verilmelidir; wildcard origin kullanilmaz. Development icin secret degerleri User Secrets ile saklanabilir.
 
 ## Resume Text Extraction
 

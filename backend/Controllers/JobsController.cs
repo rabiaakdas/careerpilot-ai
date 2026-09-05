@@ -26,6 +26,11 @@ public class JobsController(
 {
     private const string UploadsDirectory = "uploads";
     private const string ResumesDirectory = "resumes";
+    private const int MaxCompanyNameLength = 200;
+    private const int MaxPositionTitleLength = 200;
+    private const int MaxDescriptionLength = 4000;
+    private const int MaxLocationLength = 200;
+    private const int MaxJobUrlLength = 1000;
 
     [HttpPost]
     public async Task<IActionResult> Create(CreateJobRequest request, CancellationToken cancellationToken)
@@ -43,7 +48,7 @@ public class JobsController(
         var location = NormalizeOptionalText(request.Location);
         var jobUrl = NormalizeOptionalText(request.JobUrl);
 
-        ValidateJobRequest(companyName, positionTitle, description);
+        ValidateJobRequest(companyName, positionTitle, description, location, jobUrl);
 
         if (!ModelState.IsValid)
         {
@@ -130,7 +135,12 @@ public class JobsController(
         var positionTitle = request.PositionTitle?.Trim();
         var description = request.Description?.Trim();
 
-        ValidateJobRequest(companyName, positionTitle, description);
+        ValidateJobRequest(
+            companyName,
+            positionTitle,
+            description,
+            NormalizeOptionalText(request.Location),
+            NormalizeOptionalText(request.JobUrl));
 
         if (!ModelState.IsValid)
         {
@@ -513,33 +523,48 @@ public class JobsController(
         return Guid.TryParse(userIdValue, out var userId) ? userId : null;
     }
 
-    private void ValidateJobRequest(string? companyName, string? positionTitle, string? description)
+    private void ValidateJobRequest(
+        string? companyName,
+        string? positionTitle,
+        string? description,
+        string? location,
+        string? jobUrl)
     {
         if (string.IsNullOrWhiteSpace(companyName))
         {
             ModelState.AddModelError(nameof(CreateJobRequest.CompanyName), "Company name is required.");
         }
-        else if (companyName.Length > 200)
+        else if (companyName.Length > MaxCompanyNameLength)
         {
-            ModelState.AddModelError(nameof(CreateJobRequest.CompanyName), "Company name must be 200 characters or fewer.");
+            ModelState.AddModelError(nameof(CreateJobRequest.CompanyName), $"Company name must be {MaxCompanyNameLength} characters or fewer.");
         }
 
         if (string.IsNullOrWhiteSpace(positionTitle))
         {
             ModelState.AddModelError(nameof(CreateJobRequest.PositionTitle), "Position title is required.");
         }
-        else if (positionTitle.Length > 200)
+        else if (positionTitle.Length > MaxPositionTitleLength)
         {
-            ModelState.AddModelError(nameof(CreateJobRequest.PositionTitle), "Position title must be 200 characters or fewer.");
+            ModelState.AddModelError(nameof(CreateJobRequest.PositionTitle), $"Position title must be {MaxPositionTitleLength} characters or fewer.");
         }
 
         if (string.IsNullOrWhiteSpace(description))
         {
             ModelState.AddModelError(nameof(CreateJobRequest.Description), "Description is required.");
         }
-        else if (description.Length > 4000)
+        else if (description.Length > MaxDescriptionLength)
         {
-            ModelState.AddModelError(nameof(CreateJobRequest.Description), "Description must be 4000 characters or fewer.");
+            ModelState.AddModelError(nameof(CreateJobRequest.Description), $"Description must be {MaxDescriptionLength} characters or fewer.");
+        }
+
+        if (location?.Length > MaxLocationLength)
+        {
+            ModelState.AddModelError(nameof(CreateJobRequest.Location), $"Location must be {MaxLocationLength} characters or fewer.");
+        }
+
+        if (jobUrl?.Length > MaxJobUrlLength)
+        {
+            ModelState.AddModelError(nameof(CreateJobRequest.JobUrl), $"Job URL must be {MaxJobUrlLength} characters or fewer.");
         }
     }
 
