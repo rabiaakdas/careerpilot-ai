@@ -7,6 +7,15 @@ import {
 } from 'react'
 import './App.css'
 import {
+  createTranslator,
+  getDifficultyLabel,
+  getInitialLanguage,
+  getLocale,
+  persistLanguage,
+  type Translator,
+} from './i18n/i18n'
+import type { Language } from './i18n/translations'
+import {
   login,
   register,
   type LoginRequest,
@@ -63,6 +72,8 @@ const initialJobForm: CreateJobRequest = {
 }
 
 function App() {
+  const [language, setLanguage] = useState<Language>(getInitialLanguage)
+  const t = useMemo(() => createTranslator(language), [language])
   const [authMode, setAuthMode] = useState<AuthMode>('login')
   const [loginForm, setLoginForm] = useState<LoginRequest>(initialLoginForm)
   const [registerForm, setRegisterForm] =
@@ -89,20 +100,36 @@ function App() {
 
   const isLogin = authMode === 'login'
 
+  useEffect(() => {
+    persistLanguage(language)
+  }, [language])
+
   async function handleLoginSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setAuthLoading(true)
     setAuthErrorMessage('')
     setAuthSuccessMessage('')
 
+    if (!loginForm.email.trim()) {
+      setAuthLoading(false)
+      setAuthErrorMessage(t('auth.emailRequired'))
+      return
+    }
+
+    if (!loginForm.password.trim()) {
+      setAuthLoading(false)
+      setAuthErrorMessage(t('auth.passwordRequired'))
+      return
+    }
+
     try {
       const response = await login(loginForm)
       localStorage.setItem('accessToken', response.accessToken)
       setIsAuthenticated(true)
-      setAuthSuccessMessage(`Welcome back, ${response.firstName}.`)
+      setAuthSuccessMessage(t('auth.welcomeBack', { name: response.firstName }))
       navigateTo('/jobs')
     } catch (error) {
-      setAuthErrorMessage(getErrorMessage(error))
+      setAuthErrorMessage(getErrorMessage(error, t))
     } finally {
       setAuthLoading(false)
     }
@@ -114,12 +141,36 @@ function App() {
     setAuthErrorMessage('')
     setAuthSuccessMessage('')
 
+    if (!registerForm.firstName.trim()) {
+      setAuthLoading(false)
+      setAuthErrorMessage(t('auth.firstNameRequired'))
+      return
+    }
+
+    if (!registerForm.lastName.trim()) {
+      setAuthLoading(false)
+      setAuthErrorMessage(t('auth.lastNameRequired'))
+      return
+    }
+
+    if (!registerForm.email.trim()) {
+      setAuthLoading(false)
+      setAuthErrorMessage(t('auth.emailRequired'))
+      return
+    }
+
+    if (!registerForm.password.trim()) {
+      setAuthLoading(false)
+      setAuthErrorMessage(t('auth.passwordRequired'))
+      return
+    }
+
     try {
       await register(registerForm)
       setRegisterForm(initialRegisterForm)
-      setAuthSuccessMessage('Registration completed successfully.')
+      setAuthSuccessMessage(t('auth.registrationSuccess'))
     } catch (error) {
-      setAuthErrorMessage(getErrorMessage(error))
+      setAuthErrorMessage(getErrorMessage(error, t))
     } finally {
       setAuthLoading(false)
     }
@@ -140,7 +191,7 @@ function App() {
     localStorage.removeItem('accessToken')
     setIsAuthenticated(false)
     setAuthMode('login')
-    setAuthErrorMessage(message ?? 'Please login to continue.')
+    setAuthErrorMessage(message ?? t('errors.sessionExpired'))
     navigateTo('/')
   }
 
@@ -160,6 +211,9 @@ function App() {
         onNavigate={navigateTo}
         onLogout={handleLogout}
         onUnauthorized={handleUnauthorized}
+        language={language}
+        onLanguageChange={setLanguage}
+        t={t}
       />
     )
   }
@@ -167,22 +221,27 @@ function App() {
   return (
     <main className="auth-page">
       <section className="auth-intro" aria-labelledby="auth-title">
-        <p className="eyebrow">CareerPilot AI</p>
-        <h1 id="auth-title">Your career workspace starts here.</h1>
-        <p className="intro-copy">
-          Create an account or sign in to continue building your career plan.
-        </p>
+        <p className="eyebrow">{t('brand')}</p>
+        <h1 id="auth-title">{t('auth.title')}</h1>
+        <p className="intro-copy">{t('auth.intro')}</p>
       </section>
 
-      <section className="auth-panel" aria-label="Authentication form">
-        <div className="auth-tabs" role="tablist" aria-label="Authentication">
+      <section className="auth-panel" aria-label={t('auth.formLabel')}>
+        <div className="auth-panel-top">
+          <LanguageSwitcher
+            language={language}
+            onLanguageChange={setLanguage}
+            t={t}
+          />
+        </div>
+        <div className="auth-tabs" role="tablist" aria-label={t('auth.tabsLabel')}>
           <button
             type="button"
             className={isLogin ? 'active' : ''}
             onClick={() => switchMode('login')}
             disabled={authLoading}
           >
-            Login
+            {t('auth.login')}
           </button>
           <button
             type="button"
@@ -190,14 +249,14 @@ function App() {
             onClick={() => switchMode('register')}
             disabled={authLoading}
           >
-            Register
+            {t('auth.register')}
           </button>
         </div>
 
         {isLogin ? (
           <form className="auth-form" onSubmit={handleLoginSubmit}>
             <label>
-              Email
+              {t('auth.email')}
               <input
                 type="email"
                 value={loginForm.email}
@@ -205,11 +264,12 @@ function App() {
                   setLoginForm({ ...loginForm, email: event.target.value })
                 }
                 autoComplete="email"
+                required
               />
             </label>
 
             <label>
-              Password
+              {t('auth.password')}
               <input
                 type="password"
                 value={loginForm.password}
@@ -217,6 +277,7 @@ function App() {
                   setLoginForm({ ...loginForm, password: event.target.value })
                 }
                 autoComplete="current-password"
+                required
               />
             </label>
 
@@ -225,14 +286,14 @@ function App() {
               className="primary-button"
               disabled={authLoading}
             >
-              {authLoading ? 'Logging in...' : 'Login'}
+              {authLoading ? t('auth.loggingIn') : t('auth.login')}
             </button>
           </form>
         ) : (
           <form className="auth-form" onSubmit={handleRegisterSubmit}>
             <div className="name-fields">
               <label>
-                First Name
+                {t('auth.firstName')}
                 <input
                   type="text"
                   value={registerForm.firstName}
@@ -243,11 +304,12 @@ function App() {
                     })
                   }
                   autoComplete="given-name"
+                  required
                 />
               </label>
 
               <label>
-                Last Name
+                {t('auth.lastName')}
                 <input
                   type="text"
                   value={registerForm.lastName}
@@ -258,12 +320,13 @@ function App() {
                     })
                   }
                   autoComplete="family-name"
+                  required
                 />
               </label>
             </div>
 
             <label>
-              Email
+              {t('auth.email')}
               <input
                 type="email"
                 value={registerForm.email}
@@ -271,11 +334,12 @@ function App() {
                   setRegisterForm({ ...registerForm, email: event.target.value })
                 }
                 autoComplete="email"
+                required
               />
             </label>
 
             <label>
-              Password
+              {t('auth.password')}
               <input
                 type="password"
                 value={registerForm.password}
@@ -286,6 +350,7 @@ function App() {
                   })
                 }
                 autoComplete="new-password"
+                required
               />
             </label>
 
@@ -294,7 +359,7 @@ function App() {
               className="primary-button"
               disabled={authLoading}
             >
-              {authLoading ? 'Creating account...' : 'Register'}
+              {authLoading ? t('auth.creatingAccount') : t('auth.register')}
             </button>
           </form>
         )}
@@ -308,11 +373,51 @@ function App() {
   )
 }
 
+interface LanguageSwitcherProps {
+  language: Language
+  onLanguageChange: (language: Language) => void
+  t: Translator
+}
+
+function LanguageSwitcher({
+  language,
+  onLanguageChange,
+  t,
+}: LanguageSwitcherProps) {
+  return (
+    <div
+      className="language-switcher"
+      role="group"
+      aria-label={t('language.label')}
+    >
+      <button
+        type="button"
+        className={language === 'tr' ? 'active' : ''}
+        onClick={() => onLanguageChange('tr')}
+        aria-pressed={language === 'tr'}
+      >
+        {t('language.tr')}
+      </button>
+      <button
+        type="button"
+        className={language === 'en' ? 'active' : ''}
+        onClick={() => onLanguageChange('en')}
+        aria-pressed={language === 'en'}
+      >
+        {t('language.en')}
+      </button>
+    </div>
+  )
+}
+
 interface JobsPageProps {
   route: RouteState
   onNavigate: (path: string) => void
   onLogout: () => void
   onUnauthorized: (message?: string) => void
+  language: Language
+  onLanguageChange: (language: Language) => void
+  t: Translator
 }
 
 function JobsPage({
@@ -320,6 +425,9 @@ function JobsPage({
   onNavigate,
   onLogout,
   onUnauthorized,
+  language,
+  onLanguageChange,
+  t,
 }: JobsPageProps) {
   const [jobs, setJobs] = useState<Job[]>([])
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
@@ -409,7 +517,7 @@ function JobsPage({
     try {
       const createdJob = await createJob(request)
       setJobs((currentJobs) => [createdJob, ...currentJobs])
-      setSuccessMessage('Job created successfully.')
+      setSuccessMessage(t('jobs.createSuccess'))
       onNavigate(`/jobs/${createdJob.id}`)
     } catch (error) {
       handleJobError(error)
@@ -433,7 +541,7 @@ function JobsPage({
         currentJobs.map((job) => (job.id === updatedJob.id ? updatedJob : job)),
       )
       setSelectedJob(updatedJob)
-      setSuccessMessage('Job updated successfully.')
+      setSuccessMessage(t('jobs.updateSuccess'))
       onNavigate(`/jobs/${updatedJob.id}`)
     } catch (error) {
       handleJobError(error)
@@ -453,7 +561,7 @@ function JobsPage({
         currentJobs.filter((currentJob) => currentJob.id !== job.id),
       )
       setDeleteCandidate(null)
-      setSuccessMessage('Job deleted successfully.')
+      setSuccessMessage(t('jobs.deleteSuccess'))
 
       if (route.jobId === job.id) {
         onNavigate('/jobs')
@@ -478,11 +586,11 @@ function JobsPage({
       setMatchResult(await matchResumeWithJob(job.id))
     } catch (error) {
       if (error instanceof UnauthorizedError) {
-        onUnauthorized(error.message)
+        onUnauthorized()
         return
       }
 
-      setMatchErrorMessage(getMatchErrorMessage(error))
+      setMatchErrorMessage(getMatchErrorMessage(error, t))
     } finally {
       setIsMatchLoading(false)
     }
@@ -501,11 +609,11 @@ function JobsPage({
       setInterviewResult(await getInterviewPrep(job.id))
     } catch (error) {
       if (error instanceof UnauthorizedError) {
-        onUnauthorized(error.message)
+        onUnauthorized()
         return
       }
 
-      setInterviewErrorMessage(getInterviewErrorMessage(error))
+      setInterviewErrorMessage(getInterviewErrorMessage(error, t))
     } finally {
       setIsInterviewLoading(false)
     }
@@ -513,44 +621,49 @@ function JobsPage({
 
   function handleJobError(error: unknown) {
     if (error instanceof UnauthorizedError) {
-      onUnauthorized(error.message)
+      onUnauthorized()
       return
     }
 
-    setErrorMessage(getErrorMessage(error))
+    setErrorMessage(getErrorMessage(error, t))
   }
 
   return (
     <main className="jobs-page">
       <header className="jobs-header">
         <div>
-          <p className="eyebrow">CareerPilot AI</p>
-          <h1>Job Management</h1>
+          <p className="eyebrow">{t('brand')}</p>
+          <h1>{t('jobs.title')}</h1>
         </div>
         <div className="header-actions">
+          <LanguageSwitcher
+            language={language}
+            onLanguageChange={onLanguageChange}
+            t={t}
+          />
           <button
             type="button"
             className="secondary-button"
             onClick={() => onNavigate('/jobs')}
           >
-            Jobs
+            {t('nav.jobs')}
           </button>
           <button
             type="button"
             className="secondary-button"
             onClick={() => onNavigate('/resume')}
           >
-            Resume
+            {t('nav.resume')}
           </button>
           <button
             type="button"
             className="primary-button"
             onClick={() => onNavigate('/jobs/new')}
           >
-            New Job
+            {t('nav.newJob')}
           </button>
           <button type="button" className="ghost-button" onClick={onLogout}>
-            Logout
+            {t('nav.logout')}
           </button>
         </div>
       </header>
@@ -560,9 +673,10 @@ function JobsPage({
 
       {route.view === 'new' && (
         <JobForm
-          title="Create job"
-          submitLabel="Create Job"
+          title={t('jobs.createJobTitle')}
+          submitLabel={t('jobs.createJob')}
           isSaving={isSaving}
+          t={t}
           onSubmit={handleCreate}
           onCancel={() => onNavigate('/jobs')}
         />
@@ -570,11 +684,12 @@ function JobsPage({
 
       {route.view === 'edit' && (
         <JobForm
-          title="Edit job"
-          submitLabel="Save Changes"
+          title={t('jobs.editJob')}
+          submitLabel={t('jobs.saveChanges')}
           initialValue={visibleJob ?? undefined}
           isLoading={isDetailLoading && !visibleJob}
           isSaving={isSaving}
+          t={t}
           onSubmit={handleUpdate}
           onCancel={() =>
             route.jobId ? onNavigate(`/jobs/${route.jobId}`) : onNavigate('/jobs')
@@ -586,6 +701,8 @@ function JobsPage({
         <ResumePage
           onUnauthorized={onUnauthorized}
           onBackToJobs={() => onNavigate('/jobs')}
+          language={language}
+          t={t}
         />
       )}
 
@@ -605,6 +722,8 @@ function JobsPage({
           onAnalyzeMatch={handleAnalyzeMatch}
           onPrepareInterview={handlePrepareInterview}
           onOpenResume={() => onNavigate('/resume')}
+          language={language}
+          t={t}
         />
       )}
 
@@ -616,6 +735,8 @@ function JobsPage({
           onView={(job) => onNavigate(`/jobs/${job.id}`)}
           onEdit={(job) => onNavigate(`/jobs/${job.id}/edit`)}
           onDelete={setDeleteCandidate}
+          language={language}
+          t={t}
         />
       )}
 
@@ -625,6 +746,7 @@ function JobsPage({
           isDeleting={deletingJobId === deleteCandidate.id}
           onCancel={() => setDeleteCandidate(null)}
           onConfirm={() => handleDelete(deleteCandidate)}
+          t={t}
         />
       )}
     </main>
@@ -638,14 +760,23 @@ interface JobListProps {
   onView: (job: Job) => void
   onEdit: (job: Job) => void
   onDelete: (job: Job) => void
+  language: Language
+  t: Translator
 }
 
 interface ResumePageProps {
   onUnauthorized: (message?: string) => void
   onBackToJobs: () => void
+  language: Language
+  t: Translator
 }
 
-function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
+function ResumePage({
+  onUnauthorized,
+  onBackToJobs,
+  language,
+  t,
+}: ResumePageProps) {
   const [resume, setResume] = useState<Resume | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -682,7 +813,7 @@ function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
       return
     }
 
-    const validationError = validateResumeFile(file)
+    const validationError = validateResumeFile(file, t)
 
     if (validationError) {
       setValidationMessage(validationError)
@@ -695,11 +826,11 @@ function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
     setSuccessMessage('')
 
     if (!selectedFile) {
-      setValidationMessage('Choose a PDF or DOCX resume first.')
+      setValidationMessage(t('resume.chooseFirst'))
       return
     }
 
-    const validationError = validateResumeFile(selectedFile)
+    const validationError = validateResumeFile(selectedFile, t)
 
     if (validationError) {
       setValidationMessage(validationError)
@@ -714,9 +845,7 @@ function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
       setSelectedFile(null)
       setValidationMessage('')
       setSuccessMessage(
-        resume
-          ? 'Resume replaced successfully.'
-          : 'Resume uploaded successfully.',
+        resume ? t('resume.replacedSuccess') : t('resume.uploadedSuccess'),
       )
     } catch (error) {
       handleResumeError(error)
@@ -735,7 +864,7 @@ function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
       setResume(null)
       setSelectedFile(null)
       setShowDeleteConfirmation(false)
-      setSuccessMessage('Resume deleted successfully.')
+      setSuccessMessage(t('resume.deletedSuccess'))
     } catch (error) {
       handleResumeError(error)
     } finally {
@@ -745,22 +874,22 @@ function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
 
   function handleResumeError(error: unknown) {
     if (error instanceof UnauthorizedError) {
-      onUnauthorized(error.message)
+      onUnauthorized()
       return
     }
 
-    setErrorMessage(getResumeErrorMessage(error))
+    setErrorMessage(getResumeErrorMessage(error, t))
   }
 
   return (
     <section className="resume-layout" aria-labelledby="resume-title">
       <div className="section-heading">
         <div>
-          <h2 id="resume-title">Resume</h2>
-          <p>Manage the CV used for AI job matching.</p>
+          <h2 id="resume-title">{t('resume.title')}</h2>
+          <p>{t('resume.copy')}</p>
         </div>
         <button type="button" className="secondary-button" onClick={onBackToJobs}>
-          Back to Jobs
+          {t('jobs.backToJobs')}
         </button>
       </div>
 
@@ -768,36 +897,36 @@ function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
       {errorMessage && <p className="message error">{errorMessage}</p>}
 
       <div className="resume-grid">
-        <section className="resume-card" aria-label="Current resume">
-          <h3>Current Resume</h3>
+        <section className="resume-card" aria-label={t('resume.current')}>
+          <h3>{t('resume.current')}</h3>
 
           {isLoading ? (
-            <p className="muted-text">Loading resume...</p>
+            <p className="muted-text">{t('resume.loading')}</p>
           ) : resume ? (
             <dl className="detail-list resume-details">
               <div>
-                <dt>File Name</dt>
+                <dt>{t('resume.fileName')}</dt>
                 <dd>{resume.originalFileName}</dd>
               </div>
               <div>
-                <dt>File Size</dt>
-                <dd>{formatFileSize(resume.fileSize)}</dd>
+                <dt>{t('resume.fileSize')}</dt>
+                <dd>{formatFileSize(resume.fileSize, language)}</dd>
               </div>
               <div>
-                <dt>Uploaded</dt>
-                <dd>{formatDateTime(resume.uploadedAt)}</dd>
+                <dt>{t('resume.uploaded')}</dt>
+                <dd>{formatDateTime(resume.uploadedAt, language, t)}</dd>
               </div>
               <div>
-                <dt>Updated</dt>
+                <dt>{t('resume.updated')}</dt>
                 <dd>
                   {resume.updatedAt
-                    ? formatDateTime(resume.updatedAt)
-                    : 'Not updated'}
+                    ? formatDateTime(resume.updatedAt, language, t)
+                    : t('jobs.notUpdated')}
                 </dd>
               </div>
             </dl>
           ) : (
-            <p className="muted-text">No resume uploaded yet.</p>
+            <p className="muted-text">{t('resume.none')}</p>
           )}
 
           {resume && (
@@ -807,16 +936,16 @@ function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
               onClick={() => setShowDeleteConfirmation(true)}
               disabled={isDeleting || isUploading}
             >
-              Delete Resume
+              {t('resume.delete')}
             </button>
           )}
         </section>
 
-        <section className="resume-card" aria-label="Resume upload">
-          <h3>{resume ? 'Replace Resume' : 'Upload Resume'}</h3>
+        <section className="resume-card" aria-label={t('resume.uploadLabel')}>
+          <h3>{resume ? t('resume.replace') : t('resume.upload')}</h3>
           <form className="job-form" onSubmit={handleUpload}>
             <label>
-              Resume File
+              {t('resume.fileLabel')}
               <input
                 type="file"
                 accept=".pdf,.docx"
@@ -828,12 +957,15 @@ function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
             </label>
 
             <p className="muted-text">
-              PDF or DOCX only. Maximum file size is 5 MB.
+              {t('resume.fileHelp')}
             </p>
 
             {selectedFile && (
               <p className="selected-file">
-                Selected: {selectedFile.name} ({formatFileSize(selectedFile.size)})
+                {t('resume.selected', {
+                  fileName: selectedFile.name,
+                  fileSize: formatFileSize(selectedFile.size, language),
+                })}
               </p>
             )}
 
@@ -848,10 +980,10 @@ function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
                 disabled={isUploading || Boolean(validationMessage)}
               >
                 {isUploading
-                  ? 'Uploading...'
+                  ? t('resume.uploading')
                   : resume
-                    ? 'Replace Resume'
-                    : 'Upload Resume'}
+                    ? t('resume.replace')
+                    : t('resume.upload')}
               </button>
             </div>
           </form>
@@ -866,10 +998,11 @@ function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
             aria-modal="true"
             aria-labelledby="delete-resume-title"
           >
-            <h2 id="delete-resume-title">Delete resume?</h2>
+            <h2 id="delete-resume-title">{t('resume.deleteTitle')}</h2>
             <p>
-              Are you sure you want to delete {resume.originalFileName}? AI match
-              analysis will need a new resume.
+              {t('resume.deleteConfirm', {
+                fileName: resume.originalFileName,
+              })}
             </p>
             <div className="form-actions">
               <button
@@ -878,7 +1011,7 @@ function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
                 onClick={() => setShowDeleteConfirmation(false)}
                 disabled={isDeleting}
               >
-                Cancel
+                {t('jobs.cancel')}
               </button>
               <button
                 type="button"
@@ -886,7 +1019,7 @@ function ResumePage({ onUnauthorized, onBackToJobs }: ResumePageProps) {
                 onClick={handleDeleteResume}
                 disabled={isDeleting}
               >
-                {isDeleting ? 'Deleting...' : 'Delete'}
+                {isDeleting ? t('jobs.deleting') : t('jobs.delete')}
               </button>
             </div>
           </section>
@@ -903,32 +1036,38 @@ function JobList({
   onView,
   onEdit,
   onDelete,
+  language,
+  t,
 }: JobListProps) {
   if (isLoading) {
-    return <p className="state-panel">Loading jobs...</p>
+    return <p className="state-panel">{t('jobs.loading')}</p>
   }
 
   if (jobs.length === 0) {
     return (
       <section className="state-panel">
-        <h2>No jobs yet</h2>
-        <p>Add the first role you want to track.</p>
+        <h2>{t('jobs.emptyTitle')}</h2>
+        <p>{t('jobs.emptyCopy')}</p>
         <button type="button" className="primary-button" onClick={onCreate}>
-          New Job
+          {t('nav.newJob')}
         </button>
       </section>
     )
   }
 
   return (
-    <section className="jobs-grid" aria-label="Jobs">
+    <section className="jobs-grid" aria-label={t('nav.jobs')}>
       {jobs.map((job) => (
         <article className="job-card" key={job.id}>
           <div className="job-card-main">
             <p className="job-company">{job.companyName}</p>
             <h2>{job.positionTitle}</h2>
-            <p className="job-meta">{job.location || 'Remote / Not specified'}</p>
-            <p className="job-date">Created {formatDate(job.createdAt)}</p>
+            <p className="job-meta">
+              {job.location || t('jobs.remoteNotSpecified')}
+            </p>
+            <p className="job-date">
+              {t('jobs.created')} {formatDate(job.createdAt, language, t)}
+            </p>
           </div>
           <div className="job-actions">
             <button
@@ -936,21 +1075,21 @@ function JobList({
               className="secondary-button"
               onClick={() => onView(job)}
             >
-              Detail
+              {t('jobs.detail')}
             </button>
             <button
               type="button"
               className="secondary-button"
               onClick={() => onEdit(job)}
             >
-              Edit
+              {t('jobs.edit')}
             </button>
             <button
               type="button"
               className="danger-button"
               onClick={() => onDelete(job)}
             >
-              Delete
+              {t('jobs.delete')}
             </button>
           </div>
         </article>
@@ -974,6 +1113,8 @@ interface JobDetailProps {
   onAnalyzeMatch: (job: Job) => void
   onPrepareInterview: (job: Job) => void
   onOpenResume: () => void
+  language: Language
+  t: Translator
 }
 
 function JobDetail({
@@ -991,17 +1132,19 @@ function JobDetail({
   onAnalyzeMatch,
   onPrepareInterview,
   onOpenResume,
+  language,
+  t,
 }: JobDetailProps) {
   if (isLoading) {
-    return <p className="state-panel">Loading job details...</p>
+    return <p className="state-panel">{t('jobs.loadingDetails')}</p>
   }
 
   if (!job) {
     return (
       <section className="state-panel">
-        <h2>Job not found</h2>
+        <h2>{t('jobs.notFound')}</h2>
         <button type="button" className="secondary-button" onClick={onBack}>
-          Back to Jobs
+          {t('jobs.backToJobs')}
         </button>
       </section>
     )
@@ -1016,21 +1159,21 @@ function JobDetail({
         </div>
         <div className="job-actions">
           <button type="button" className="secondary-button" onClick={onBack}>
-            Back
+            {t('jobs.back')}
           </button>
           <button
             type="button"
             className="secondary-button"
             onClick={() => onEdit(job)}
           >
-            Edit
+            {t('jobs.edit')}
           </button>
           <button
             type="button"
             className="danger-button"
             onClick={() => onDelete(job)}
           >
-            Delete
+            {t('jobs.delete')}
           </button>
           <button
             type="button"
@@ -1038,7 +1181,7 @@ function JobDetail({
             onClick={() => onAnalyzeMatch(job)}
             disabled={isMatchLoading}
           >
-            {isMatchLoading ? 'Analyzing...' : 'Analyze CV Match'}
+            {isMatchLoading ? t('ai.analyzing') : t('ai.analyzeMatch')}
           </button>
           <button
             type="button"
@@ -1046,89 +1189,103 @@ function JobDetail({
             onClick={() => onPrepareInterview(job)}
             disabled={isInterviewLoading}
           >
-            {isInterviewLoading ? 'Preparing...' : 'Prepare for Interview'}
+            {isInterviewLoading
+              ? t('ai.preparing')
+              : t('ai.prepareInterview')}
           </button>
         </div>
       </div>
 
       <dl className="detail-list">
         <div>
-          <dt>Location</dt>
-          <dd>{job.location || 'Not specified'}</dd>
+          <dt>{t('jobs.location')}</dt>
+          <dd>{job.location || t('jobs.notSpecified')}</dd>
         </div>
         <div>
-          <dt>Job URL</dt>
+          <dt>{t('jobs.jobUrl')}</dt>
           <dd>
             {job.jobUrl ? (
               <a href={job.jobUrl} target="_blank" rel="noreferrer noopener">
                 {job.jobUrl}
               </a>
             ) : (
-              'Not specified'
+              t('jobs.notSpecified')
             )}
           </dd>
         </div>
         <div>
-          <dt>Created</dt>
-          <dd>{formatDateTime(job.createdAt)}</dd>
+          <dt>{t('jobs.createdAt')}</dt>
+          <dd>{formatDateTime(job.createdAt, language, t)}</dd>
         </div>
         <div>
-          <dt>Updated</dt>
-          <dd>{job.updatedAt ? formatDateTime(job.updatedAt) : 'Not updated'}</dd>
+          <dt>{t('jobs.updatedAt')}</dt>
+          <dd>
+            {job.updatedAt
+              ? formatDateTime(job.updatedAt, language, t)
+              : t('jobs.notUpdated')}
+          </dd>
         </div>
       </dl>
 
       <div className="description-block">
-        <h3>Description</h3>
+        <h3>{t('jobs.description')}</h3>
         <p>{job.description}</p>
       </div>
 
       {matchErrorMessage && (
         <div className="match-error-panel">
           <p className="message error">{matchErrorMessage}</p>
-          {isResumeMissingError(matchErrorMessage) && (
+          {isResumeMissingError(matchErrorMessage, t) && (
             <button
               type="button"
               className="secondary-button"
               onClick={onOpenResume}
             >
-              Go to Resume
+              {t('ai.goToResume')}
             </button>
           )}
         </div>
       )}
 
-      {matchResult && <MatchResultPanel result={matchResult} />}
+      {matchResult && <MatchResultPanel result={matchResult} t={t} />}
 
       {interviewErrorMessage && (
         <div className="match-error-panel">
           <p className="message error">{interviewErrorMessage}</p>
-          {isResumeMissingError(interviewErrorMessage) && (
+          {isResumeMissingError(interviewErrorMessage, t) && (
             <button
               type="button"
               className="secondary-button"
               onClick={onOpenResume}
             >
-              Go to Resume
+              {t('ai.goToResume')}
             </button>
           )}
         </div>
       )}
 
-      {interviewResult && <InterviewPrepPanel result={interviewResult} />}
+      {interviewResult && (
+        <InterviewPrepPanel result={interviewResult} language={language} t={t} />
+      )}
     </section>
   )
 }
 
-function MatchResultPanel({ result }: { result: ResumeJobMatchResponse }) {
+function MatchResultPanel({
+  result,
+  t,
+}: {
+  result: ResumeJobMatchResponse
+  t: Translator
+}) {
   const score = Math.min(Math.max(result.matchScore, 0), 100)
 
   return (
     <section className="match-panel" aria-labelledby="match-title">
       <div className="match-score-row">
         <div>
-          <p className="eyebrow">AI CV Match</p>
-          <h3 id="match-title">Match Score</h3>
+          <p className="eyebrow">{t('match.eyebrow')}</p>
+          <h3 id="match-title">{t('match.title')}</h3>
         </div>
         <strong>{score} / 100</strong>
       </div>
@@ -1136,7 +1293,7 @@ function MatchResultPanel({ result }: { result: ResumeJobMatchResponse }) {
       <div
         className="score-bar"
         role="progressbar"
-        aria-label="Match score"
+        aria-label={t('match.progressLabel')}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={score}
@@ -1145,24 +1302,36 @@ function MatchResultPanel({ result }: { result: ResumeJobMatchResponse }) {
       </div>
 
       <section className="match-section">
-        <h4>Summary</h4>
-        <p>{result.summary || 'No summary returned.'}</p>
+        <h4>{t('match.summary')}</h4>
+        <p>{result.summary || t('match.noSummary')}</p>
       </section>
 
       <div className="match-columns">
-        <SkillList title="Matched Skills" items={result.matchedSkills} />
-        <SkillList title="Missing Skills" items={result.missingSkills} />
+        <SkillList title={t('match.matchedSkills')} items={result.matchedSkills} t={t} />
+        <SkillList title={t('match.missingSkills')} items={result.missingSkills} t={t} />
       </div>
 
       <div className="match-columns">
-        <BulletList title="Strengths" items={result.strengths} />
-        <BulletList title="Recommendations" items={result.recommendations} />
+        <BulletList title={t('match.strengths')} items={result.strengths} t={t} />
+        <BulletList
+          title={t('match.recommendations')}
+          items={result.recommendations}
+          t={t}
+        />
       </div>
     </section>
   )
 }
 
-function SkillList({ title, items }: { title: string; items: string[] }) {
+function SkillList({
+  title,
+  items,
+  t,
+}: {
+  title: string
+  items: string[]
+  t: Translator
+}) {
   return (
     <section className="match-section">
       <h4>{title}</h4>
@@ -1173,13 +1342,21 @@ function SkillList({ title, items }: { title: string; items: string[] }) {
           ))}
         </ul>
       ) : (
-        <p className="muted-text">None identified.</p>
+        <p className="muted-text">{t('match.none')}</p>
       )}
     </section>
   )
 }
 
-function BulletList({ title, items }: { title: string; items: string[] }) {
+function BulletList({
+  title,
+  items,
+  t,
+}: {
+  title: string
+  items: string[]
+  t: Translator
+}) {
   return (
     <section className="match-section">
       <h4>{title}</h4>
@@ -1190,39 +1367,51 @@ function BulletList({ title, items }: { title: string; items: string[] }) {
           ))}
         </ul>
       ) : (
-        <p className="muted-text">None identified.</p>
+        <p className="muted-text">{t('match.none')}</p>
       )}
     </section>
   )
 }
 
-function InterviewPrepPanel({ result }: { result: InterviewPrepResponse }) {
+function InterviewPrepPanel({
+  result,
+  language,
+  t,
+}: {
+  result: InterviewPrepResponse
+  language: Language
+  t: Translator
+}) {
   return (
     <section className="interview-panel" aria-labelledby="interview-title">
       <div className="section-heading compact-heading">
         <div>
-          <p className="eyebrow">AI Interview Prep</p>
-          <h3 id="interview-title">Personalized Interview Preparation</h3>
+          <p className="eyebrow">{t('interview.eyebrow')}</p>
+          <h3 id="interview-title">{t('interview.title')}</h3>
         </div>
       </div>
 
       <section className="interview-summary">
-        <h4>Summary</h4>
-        <p>{result.summary || 'No summary returned.'}</p>
+        <h4>{t('interview.summary')}</h4>
+        <p>{result.summary || t('interview.noSummary')}</p>
       </section>
 
       <InterviewQuestionSection
-        title="Technical Questions"
+        title={t('interview.technicalQuestions')}
         items={result.technicalQuestions}
+        t={t}
         renderItem={(item) => (
           <QuestionCard key={item.question} question={item.question}>
-            <p className="difficulty-badge">Difficulty: {item.difficulty}</p>
+            <p className="difficulty-badge">
+              {t('interview.difficulty')}:{' '}
+              {getDifficultyLabel(item.difficulty, language)}
+            </p>
             <QuestionDetail
-              label="Why this may be asked"
+              label={t('interview.whyAsked')}
               value={item.whyAsked}
             />
             <QuestionDetail
-              label="Answer guidance"
+              label={t('interview.answerGuidance')}
               value={item.answerGuidance}
             />
           </QuestionCard>
@@ -1230,16 +1419,17 @@ function InterviewPrepPanel({ result }: { result: InterviewPrepResponse }) {
       />
 
       <InterviewQuestionSection
-        title="Behavioral Questions"
+        title={t('interview.behavioralQuestions')}
         items={result.behavioralQuestions}
+        t={t}
         renderItem={(item) => (
           <QuestionCard key={item.question} question={item.question}>
             <QuestionDetail
-              label="Why this may be asked"
+              label={t('interview.whyAsked')}
               value={item.whyAsked}
             />
             <QuestionDetail
-              label="Answer guidance"
+              label={t('interview.answerGuidance')}
               value={item.answerGuidance}
             />
           </QuestionCard>
@@ -1247,17 +1437,18 @@ function InterviewPrepPanel({ result }: { result: InterviewPrepResponse }) {
       />
 
       <InterviewQuestionSection
-        title="CV-Based Questions"
+        title={t('interview.cvBasedQuestions')}
         items={result.cvBasedQuestions}
+        t={t}
         renderItem={(item) => (
           <QuestionCard key={item.question} question={item.question}>
             <QuestionDetail
-              label="CV evidence"
+              label={t('interview.cvEvidence')}
               value={item.cvEvidence}
               variant="evidence"
             />
             <QuestionDetail
-              label="Answer guidance"
+              label={t('interview.answerGuidance')}
               value={item.answerGuidance}
             />
           </QuestionCard>
@@ -1265,7 +1456,7 @@ function InterviewPrepPanel({ result }: { result: InterviewPrepResponse }) {
       />
 
       <section className="interview-section">
-        <h4>Questions You Can Ask the Employer</h4>
+        <h4>{t('interview.employerQuestions')}</h4>
         {result.questionsToAskEmployer.length > 0 ? (
           <ul className="plain-list">
             {result.questionsToAskEmployer.map((question) => (
@@ -1273,7 +1464,7 @@ function InterviewPrepPanel({ result }: { result: InterviewPrepResponse }) {
             ))}
           </ul>
         ) : (
-          <p className="muted-text">None identified.</p>
+          <p className="muted-text">{t('interview.none')}</p>
         )}
       </section>
     </section>
@@ -1284,10 +1475,12 @@ function InterviewQuestionSection<TItem>({
   title,
   items,
   renderItem,
+  t,
 }: {
   title: string
   items: TItem[]
   renderItem: (item: TItem) => ReactNode
+  t: Translator
 }) {
   return (
     <section className="interview-section">
@@ -1295,7 +1488,7 @@ function InterviewQuestionSection<TItem>({
       {items.length > 0 ? (
         <div className="question-grid">{items.map(renderItem)}</div>
       ) : (
-        <p className="muted-text">None identified.</p>
+        <p className="muted-text">{t('interview.none')}</p>
       )}
     </section>
   )
@@ -1345,6 +1538,7 @@ interface JobFormProps {
   isSaving: boolean
   onSubmit: (request: CreateJobRequest) => Promise<void>
   onCancel: () => void
+  t: Translator
 }
 
 function JobForm({
@@ -1355,6 +1549,7 @@ function JobForm({
   isSaving,
   onSubmit,
   onCancel,
+  t,
 }: JobFormProps) {
   const [form, setForm] = useState<CreateJobRequest>(() =>
     initialValue ? toJobForm(initialValue) : initialJobForm,
@@ -1371,17 +1566,17 @@ function JobForm({
     setValidationMessage('')
 
     if (!form.companyName.trim()) {
-      setValidationMessage('Company name is required.')
+      setValidationMessage(t('jobs.validationCompanyName'))
       return
     }
 
     if (!form.positionTitle.trim()) {
-      setValidationMessage('Position title is required.')
+      setValidationMessage(t('jobs.validationPositionTitle'))
       return
     }
 
     if (!form.description.trim()) {
-      setValidationMessage('Description is required.')
+      setValidationMessage(t('jobs.validationDescription'))
       return
     }
 
@@ -1389,7 +1584,7 @@ function JobForm({
   }
 
   if (isLoading) {
-    return <p className="state-panel">Loading job form...</p>
+    return <p className="state-panel">{t('jobs.loadingForm')}</p>
   }
 
   return (
@@ -1397,7 +1592,7 @@ function JobForm({
       <h2 id="job-form-title">{title}</h2>
       <form className="job-form" onSubmit={handleSubmit}>
         <label>
-          Company Name
+          {t('jobs.companyName')}
           <input
             type="text"
             value={form.companyName}
@@ -1409,7 +1604,7 @@ function JobForm({
         </label>
 
         <label>
-          Position Title
+          {t('jobs.positionTitle')}
           <input
             type="text"
             value={form.positionTitle}
@@ -1421,7 +1616,7 @@ function JobForm({
         </label>
 
         <label>
-          Description
+          {t('jobs.description')}
           <textarea
             value={form.description}
             onChange={(event) =>
@@ -1434,7 +1629,7 @@ function JobForm({
 
         <div className="form-row">
           <label>
-            Location
+            {t('jobs.location')}
             <input
               type="text"
               value={form.location ?? ''}
@@ -1445,7 +1640,7 @@ function JobForm({
           </label>
 
           <label>
-            Job URL
+            {t('jobs.jobUrl')}
             <input
               type="url"
               value={form.jobUrl ?? ''}
@@ -1462,10 +1657,10 @@ function JobForm({
 
         <div className="form-actions">
           <button type="button" className="secondary-button" onClick={onCancel}>
-            Cancel
+            {t('jobs.cancel')}
           </button>
           <button type="submit" className="primary-button" disabled={isSaving}>
-            {isSaving ? 'Saving...' : submitLabel}
+            {isSaving ? t('jobs.saving') : submitLabel}
           </button>
         </div>
       </form>
@@ -1478,6 +1673,7 @@ interface DeleteConfirmationProps {
   isDeleting: boolean
   onCancel: () => void
   onConfirm: () => void
+  t: Translator
 }
 
 function DeleteConfirmation({
@@ -1485,6 +1681,7 @@ function DeleteConfirmation({
   isDeleting,
   onCancel,
   onConfirm,
+  t,
 }: DeleteConfirmationProps) {
   return (
     <div className="modal-backdrop">
@@ -1494,10 +1691,12 @@ function DeleteConfirmation({
         aria-modal="true"
         aria-labelledby="delete-title"
       >
-        <h2 id="delete-title">Delete job?</h2>
+        <h2 id="delete-title">{t('jobs.deleteTitle')}</h2>
         <p>
-          Are you sure you want to delete {job.positionTitle} at{' '}
-          {job.companyName}?
+          {t('jobs.deleteConfirm', {
+            positionTitle: job.positionTitle,
+            companyName: job.companyName,
+          })}
         </p>
         <div className="form-actions">
           <button
@@ -1506,7 +1705,7 @@ function DeleteConfirmation({
             onClick={onCancel}
             disabled={isDeleting}
           >
-            Cancel
+            {t('jobs.cancel')}
           </button>
           <button
             type="button"
@@ -1514,7 +1713,7 @@ function DeleteConfirmation({
             onClick={onConfirm}
             disabled={isDeleting}
           >
-            {isDeleting ? 'Deleting...' : 'Delete'}
+            {isDeleting ? t('jobs.deleting') : t('jobs.delete')}
           </button>
         </div>
       </section>
@@ -1553,149 +1752,152 @@ function toJobForm(job: Job): CreateJobRequest {
   }
 }
 
-function formatDate(value: string) {
+function formatDate(value: string, language: Language, t: Translator) {
   if (!value) {
-    return 'Unknown date'
+    return t('jobs.unknownDate')
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(getLocale(language), {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   }).format(new Date(value))
 }
 
-function formatDateTime(value: string) {
+function formatDateTime(value: string, language: Language, t: Translator) {
   if (!value) {
-    return 'Unknown date'
+    return t('jobs.unknownDate')
   }
 
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(getLocale(language), {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value))
 }
 
-function formatFileSize(value: number) {
+function formatFileSize(value: number, language: Language) {
+  const formatter = new Intl.NumberFormat(getLocale(language), {
+    maximumFractionDigits: 1,
+  })
+
   if (value < 1024) {
     return `${value} B`
   }
 
   if (value < 1024 * 1024) {
-    return `${(value / 1024).toFixed(1)} KB`
+    return `${formatter.format(value / 1024)} KB`
   }
 
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`
+  return `${formatter.format(value / (1024 * 1024))} MB`
 }
 
-function validateResumeFile(file: File) {
+function validateResumeFile(file: File, t: Translator) {
   const fileName = file.name.toLowerCase()
   const isAllowedExtension =
     fileName.endsWith('.pdf') || fileName.endsWith('.docx')
 
   if (!isAllowedExtension) {
-    return 'Only PDF and DOCX files are allowed.'
+    return t('resume.allowed')
   }
 
   if (file.size === 0) {
-    return 'Resume file cannot be empty.'
+    return t('resume.empty')
   }
 
   if (file.size > MAX_RESUME_FILE_SIZE) {
-    return 'Resume file must be 5 MB or smaller.'
+    return t('resume.tooLarge')
   }
 
   return ''
 }
 
-function getResumeErrorMessage(error: unknown) {
+function getResumeErrorMessage(error: unknown, t: Translator) {
   if (error instanceof ApiError) {
     if (error.status === 400) {
-      return error.message
+      return t('errors.requestFailed')
     }
 
     if (error.status === 404) {
-      return 'No resume uploaded yet.'
+      return t('errors.noResume')
     }
   }
 
-  return getErrorMessage(error)
+  return getErrorMessage(error, t)
 }
 
-function getMatchErrorMessage(error: unknown) {
+function getMatchErrorMessage(error: unknown, t: Translator) {
   if (error instanceof ApiError) {
     if (error.status === 404) {
       return error.message.toLowerCase().includes('resume')
-        ? 'Upload a resume before running AI match analysis.'
-        : 'Job not found.'
+        ? t('errors.resumeMissingMatch')
+        : t('errors.jobNotFound')
     }
 
     if (error.status === 422) {
-      return 'The resume could not be read. It may be a scanned PDF or a damaged file.'
+      return t('errors.resumeExtraction')
     }
 
     if (error.status === 502) {
-      return 'The AI provider could not complete the match. Please try again.'
+      return t('errors.aiMatchProvider')
     }
 
     if (error.status === 503) {
-      return 'AI match is not configured yet.'
+      return t('errors.aiMatchConfig')
     }
 
     if (error.status === 504) {
-      return 'AI match timed out. Please try again.'
-    }
-
-    if (error.message) {
-      return error.message
+      return t('errors.aiMatchTimeout')
     }
   }
 
-  return getErrorMessage(error)
+  return getErrorMessage(error, t)
 }
 
-function getInterviewErrorMessage(error: unknown) {
+function getInterviewErrorMessage(error: unknown, t: Translator) {
   if (error instanceof ApiError) {
     if (error.status === 404) {
       return error.message.toLowerCase().includes('resume')
-        ? 'Upload a resume before preparing for an interview.'
-        : 'Job not found.'
+        ? t('errors.resumeMissingInterview')
+        : t('errors.jobNotFound')
     }
 
     if (error.status === 422) {
-      return 'The resume could not be read. It may be a scanned PDF or a damaged file.'
+      return t('errors.resumeExtraction')
     }
 
     if (error.status === 502) {
-      return 'The AI provider could not complete the interview preparation. Please try again.'
+      return t('errors.aiInterviewProvider')
     }
 
     if (error.status === 503) {
-      return 'AI interview preparation is not configured yet.'
+      return t('errors.aiInterviewConfig')
     }
 
     if (error.status === 504) {
-      return 'AI interview preparation timed out. Please try again.'
-    }
-
-    if (error.message) {
-      return error.message
+      return t('errors.aiInterviewTimeout')
     }
   }
 
-  return getErrorMessage(error)
+  return getErrorMessage(error, t)
 }
 
-function isResumeMissingError(message: string) {
-  return message.toLowerCase().includes('upload a resume')
+function isResumeMissingError(message: string, t: Translator) {
+  return (
+    message === t('errors.resumeMissingMatch') ||
+    message === t('errors.resumeMissingInterview')
+  )
 }
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message
+function getErrorMessage(error: unknown, t: Translator) {
+  if (error instanceof UnauthorizedError) {
+    return t('errors.sessionExpired')
   }
 
-  return 'Something went wrong. Please try again.'
+  if (error instanceof ApiError) {
+    return t('errors.requestFailed')
+  }
+
+  return t('errors.generic')
 }
 
 export default App

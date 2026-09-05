@@ -46,6 +46,45 @@
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
 }
 
+.auth-panel-top {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 18px;
+}
+
+.language-switcher {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 3px;
+  background: #f9fafb;
+}
+
+.language-switcher button {
+  min-width: 44px;
+  border: 0;
+  border-radius: 4px;
+  padding: 7px 10px;
+  color: #374151;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.language-switcher button.active {
+  color: #ffffff;
+  background: #0f766e;
+}
+
+.language-switcher button:focus-visible {
+  outline: 3px solid rgba(15, 118, 110, 0.24);
+  outline-offset: 2px;
+}
+
 .auth-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -677,6 +716,15 @@
   .job-actions button,
   .form-actions button {
     width: 100%;
+  }
+
+  .language-switcher {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .language-switcher button {
+    flex: 1;
   }
 
   .detail-list,
