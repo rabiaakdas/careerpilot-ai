@@ -1,0 +1,13 @@
+bin/
+obj/
+uploads/resumes/*
+!uploads/resumes/.gitkeep
+.git/
+.vs/
+.vscode/
+*.user
+*.suo
+*.log
+cp-*-build/
+Dockerfile
+.dockerignore

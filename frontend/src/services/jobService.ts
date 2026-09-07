@@ -1,5 +1,6 @@
 import type { CreateJobRequest, Job, UpdateJobRequest } from '../types/job'
 import { ApiError, UnauthorizedError } from './apiErrors'
+import { buildApiUrl } from './apiConfig'
 import type {
   BehavioralInterviewQuestion,
   CvBasedInterviewQuestion,
@@ -10,8 +11,6 @@ import type {
 import type { ResumeJobMatchResponse } from '../types/match'
 
 export { ApiError, UnauthorizedError } from './apiErrors'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
 interface JobApiResponse {
   id?: string
@@ -163,7 +162,7 @@ async function sendRequest<TResponse>(
     throw new UnauthorizedError('Please login to manage jobs.')
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(buildApiUrl(path), {
     method: options.method ?? 'GET',
     headers: {
       Authorization: `Bearer ${token}`,

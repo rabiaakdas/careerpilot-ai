@@ -1,7 +1,6 @@
 import { ApiError, UnauthorizedError } from './apiErrors'
 import type { Resume } from '../types/resume'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+import { buildApiUrl } from './apiConfig'
 
 interface ResumeApiResponse {
   id?: string
@@ -68,7 +67,7 @@ async function sendRequest<TResponse>(
     throw new UnauthorizedError('Please login to manage your resume.')
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(buildApiUrl(path), {
     method: options.method ?? 'GET',
     headers: {
       Authorization: `Bearer ${token}`,

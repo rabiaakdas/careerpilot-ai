@@ -5,6 +5,7 @@ using CareerPilot.Api.Services;
 using CareerPilot.Api.Services.AI;
 using CareerPilot.Api.Services.Resumes;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -83,8 +84,16 @@ builder.Services.AddCors(options =>
     });
 });
 builder.Services.AddControllers();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 var app = builder.Build();
+
+app.UseForwardedHeaders();
 
 if (!app.Environment.IsDevelopment())
 {
@@ -113,9 +122,13 @@ app.Use(async (context, next) =>
     await next();
 });
 
-app.UseHttpsRedirection();
+if (builder.Configuration.GetValue("Deployment:UseHttpsRedirection", true))
+{
+    app.UseHttpsRedirection();
+}
 
 app.MapGet("/", () => "CareerPilot AI API is running.");
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
 app.UseCors(DevelopmentCorsPolicy);
 
 app.UseAuthentication();

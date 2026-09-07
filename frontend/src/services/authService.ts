@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+import { buildApiUrl } from './apiConfig'
 
 export interface RegisterRequest {
   firstName: string
@@ -69,7 +69,7 @@ export async function login(request: LoginRequest): Promise<LoginResponse> {
 }
 
 async function sendRequest<TResponse>(path: string, body: unknown) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(buildApiUrl(path), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

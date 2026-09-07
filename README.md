@@ -131,3 +131,83 @@ Dashboard ozeti:
 - Application status distribution
 - Application rate
 - Recent applications
+
+## Docker / Deployment
+
+Docker deployment dort servisle calisir:
+
+- `postgres`: PostgreSQL 18 veritabani
+- `migrations`: EF Core migration'larini uygulayan one-shot .NET SDK container'i
+- `backend`: ASP.NET Core Web API
+- `frontend`: nginx uzerinden Vite build ciktilari ve `/api` reverse proxy
+
+Prerequisites:
+
+- Docker Desktop
+
+Setup:
+
+1. `.env.example` dosyasini `.env` olarak kopyala.
+2. Placeholder degerleri gercek deployment secret'lariyla doldur. `.env` dosyasini Git'e commit etme.
+3. `docker compose --env-file .env build`
+4. `docker compose --env-file .env up -d`
+
+Fresh start sirasinda Compose once PostgreSQL'i hazir hale getirir, sonra `migrations` servisi mevcut EF Core migration'larini uygular. Migration container'i basariyla tamamlaninca exit `0` ile kapanir; backend yalnizca bu adim basarili olduktan sonra baslar. Host makineden PostgreSQL'e manuel baglanmak gerekmez.
+
+Uygulama varsayilan olarak su adresten acilir:
+
+```text
+http://localhost:8080
+```
+
+Frontend production build'de `VITE_API_BASE_URL` bos birakilir. Browser `/api/...` isteklerini frontend nginx'e gonderir; nginx bu istekleri Compose network icindeki `backend:8080` adresine proxy eder. Browser tarafinda `backend` container DNS adina dogrudan istek yapilmaz.
+
+`/health` istegi de nginx tarafindan backend'in `/health` endpoint'ine proxy edilir. Backend kullanilamaz durumdaysa frontend container healthcheck'i de basarili gorunmez.
+
+AI endpoint'leri uzun surebilir. `/api` nginx proxy timeout degerleri Interview Prep gibi istekler icin 180 saniye olacak sekilde ayarlanmistir. Backend AI HTTP timeout'u `AI__TimeoutSeconds` ile verilebilir.
+
+Logs:
+
+```powershell
+docker compose --env-file .env logs -f
+```
+
+Stop:
+
+```powershell
+docker compose --env-file .env down
+```
+
+Stop + delete volumes:
+
+```powershell
+docker compose --env-file .env down -v
+```
+
+`docker compose down -v`, PostgreSQL verisini ve yuklenen CV dosyalarini tutan persistent volume'leri siler. Gercek kullanici verisi olan ortamlarda dikkatli kullan.
+
+### Docker Migrations
+
+Runtime backend image'ina SDK veya `dotnet-ef` eklenmez. Migration'lar ayri `migrations` servisi tarafindan, .NET SDK image'i ve sabit `dotnet-ef` surumu ile calistirilir:
+
+```text
+dotnet ef database update --project backend.csproj --no-build
+```
+
+`migrations` servisi `postgres` healthy olduktan sonra baslar. Migration basarisiz olursa backend baslamaz. Bu yaklasim tek-instance Compose deployment icin basit ve kontrolludur; coklu instance production ortamlarda migration adimi CI/CD pipeline tarafindan tekil bir deployment adimi olarak yurutulmelidir.
+
+### Docker Persistence
+
+Compose `postgres_data` named volume'u ile veritabani datasi container restart/recreate sonrasi korunur. PostgreSQL 18 image yapisiyla uyumlu olmasi icin bu volume container icinde `/var/lib/postgresql` yoluna baglanir; image major-version-specific data subdirectory'lerini bu alanin altinda yonetir. Yuklenen CV dosyalari `resume_uploads` named volume'u ile backend icindeki `/app/uploads/resumes` yoluna baglanir.
+
+Docker Compose lokal PostgreSQL portu `5432` ile cakismamak icin PostgreSQL servisini host'a publish etmez. Backend Compose network icinde `postgres:5432` adresini kullanir.
+
+Lokal development akisi degismez:
+
+```powershell
+cd backend
+dotnet run
+
+cd frontend
+npm run dev
+```
