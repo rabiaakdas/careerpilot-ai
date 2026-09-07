@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore backend dependencies
+        run: dotnet restore backend/backend.csproj
+
+      - name: Build backend
+        run: dotnet build backend/backend.csproj --configuration Release --no-restore
+
+      - name: Discover test projects
+        id: tests
+        shell: bash
+        run: |
+          mapfile -t test_projects < <(find . -type f \( -iname '*Test.csproj' -o -iname '*Tests.csproj' \))
+
+          if [ "${#test_projects[@]}" -eq 0 ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No test projects found. Skipping dotnet test."
+            exit 0
+          fi
+
+          printf '%s\n' "${test_projects[@]}" > test-projects.txt
+          echo "found=true" >> "$GITHUB_OUTPUT"
+
+      - name: Run backend tests
+        if: steps.tests.outputs.found == 'true'
+        shell: bash
+        run: |
+          while IFS= read -r project; do
+            dotnet test "$project" --configuration Release --verbosity normal
+          done < test-projects.txt
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+  docker:
+    name: Docker Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -f backend/Dockerfile backend
+
+      - name: Build migrations image
+        run: docker build -f backend/Dockerfile.migrations backend
+
+      - name: Build frontend image
+        run: docker build -f frontend/Dockerfile frontend --build-arg VITE_API_BASE_URL=
