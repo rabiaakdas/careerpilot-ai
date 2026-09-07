@@ -1,213 +1,290 @@
 # CareerPilot AI
 
-CareerPilot AI, kariyer planlama ve iş başvurusu süreçlerini desteklemek için geliştirilecek bir full-stack SaaS projesidir.
+[![CI](https://github.com/rabiaakdas/careerpilot-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/rabiaakdas/careerpilot-ai/actions/workflows/ci.yml)
 
-Bu aşamada proje yalnızca temel frontend ve backend kurulumunu içerir. PostgreSQL, authentication, AI entegrasyonu, Docker, test ve deployment adımları sonraki görevlerde eklenecektir.
+CareerPilot AI is a full-stack, AI-powered job application and career management platform. It helps users manage job opportunities, track applications, upload resumes, and generate practical AI insights for career planning and interview preparation.
 
-## Teknolojiler
+The project combines a React + TypeScript frontend with an ASP.NET Core Web API backend, PostgreSQL persistence, JWT authentication, OpenAI Responses API integrations, Docker-based runtime configuration, and GitHub Actions CI.
 
-- Frontend: React, TypeScript, Vite
-- Backend: C#, ASP.NET Core Web API
-- Database: PostgreSQL (sonraki aşamada eklenecek)
-- ORM: Entity Framework Core (sonraki aşamada eklenecek)
+## Key Features
 
-## Proje Yapısı
+- User registration and login with JWT-based authentication
+- Job CRUD for tracking target roles and companies
+- Application management with Kanban-style status tracking
+- Dashboard summary for jobs, applications, status distribution, and recent activity
+- Resume upload, replacement, deletion, and metadata display
+- PDF and DOCX resume text extraction
+- Turkish and English frontend language support
+- Docker Compose runtime with PostgreSQL, backend, frontend, and one-shot migrations
+- GitHub Actions CI for backend, frontend, and Docker image validation
 
-```text
-careerpilot-ai/
-├── frontend/
-├── backend/
-├── docs/
-├── .gitignore
-└── README.md
+## AI Capabilities
+
+- Job Analysis: extracts important skills, responsibilities, technologies, and requirements from a job description
+- Resume-to-Job Match: compares the uploaded resume with a selected job and returns a match score with strengths and recommendations
+- Skill Gap Analysis: identifies missing or weak skills for a selected role
+- Learning Roadmap: creates a prioritized learning plan based on the resume and target job
+- Interview Preparation: generates technical, behavioral, CV-based questions, answer guidance, and questions to ask the employer
+
+## Tech Stack
+
+| Area | Technology |
+| --- | --- |
+| Frontend | React, TypeScript, Vite |
+| Backend | C#, ASP.NET Core Web API, .NET 10 |
+| Database | PostgreSQL |
+| ORM | Entity Framework Core |
+| Authentication | JWT |
+| AI | OpenAI Responses API |
+| Containerization | Docker, Docker Compose |
+| Reverse Proxy | Nginx |
+| CI | GitHub Actions |
+
+## Architecture
+
+```mermaid
+flowchart TD
+    Browser[Browser]
+    Frontend[React + TypeScript frontend]
+    Nginx[Nginx static hosting and /api reverse proxy]
+    Backend[ASP.NET Core Web API]
+    Database[(PostgreSQL)]
+    OpenAI[OpenAI Responses API]
+    Migrations[One-shot EF Core migrations container]
+
+    Browser --> Frontend
+    Frontend --> Nginx
+    Nginx --> Backend
+    Backend --> Database
+    Backend --> OpenAI
+    Migrations --> Database
 ```
 
-## Development Configuration
+Docker Compose runs four services:
 
-PostgreSQL connection string gibi secret bilgiler repository'ye yazilmaz. Development ortaminda connection string'i User Secrets ile saglayabilirsin:
-
-```powershell
-cd backend
-dotnet user-secrets set "ConnectionStrings:CareerPilotDb" "Host=<host>;Port=<port>;Database=<database>;Username=<username>;Password=<password>"
-```
-
-AI job analysis icin OpenAI API key de User Secrets ile verilmelidir:
-
-```powershell
-cd backend
-dotnet user-secrets set "AI:ApiKey" "<openai-api-key>"
-```
-
-## Production Configuration / Security
-
-Gercek secret ve credential degerleri source code'a yazilmaz. Production ortaminda gerekli configuration environment variable olarak verilmelidir:
-
-```text
-ConnectionStrings__CareerPilotDb=<postgres-connection-string>
-Jwt__Key=<strong-secret>
-Jwt__Issuer=<issuer>
-Jwt__Audience=<audience>
-AI__ApiKey=<openai-api-key>
-AI__Model=<openai-model>
-AI__BaseUrl=<openai-responses-api-url>
-AI__TimeoutSeconds=<timeout-seconds>
-Cors__AllowedOrigins__0=<frontend-origin>
-```
-
-Production ortaminda `Jwt__Key` bos veya kisa olmamalidir. `AI__TimeoutSeconds` icin makul aralik 10-300 saniyedir; Interview Prep gibi uzun structured output ureten AI istekleri icin 120 saniye onerilir. CORS originleri acik liste olarak verilmelidir; wildcard origin kullanilmaz. Development icin secret degerleri User Secrets ile saklanabilir.
-
-## Resume Text Extraction
-
-Backend, yuklenen PDF ve DOCX CV dosyalarindan metin cikarabilir.
-Giris yapmis kullanici kendi CV metnini su endpoint ile okuyabilir:
-
-```http
-GET /api/resumes/me/text
-```
-
-## AI Resume Job Match
-
-Backend, yuklenen CV metni ile kullaniciya ait bir is ilanini AI ile karsilastirabilir.
-
-```http
-POST /api/jobs/{id}/match
-```
-
-## AI Skill Gap Analysis
-
-Backend, yuklenen CV ile kullaniciya ait bir is ilanini karsilastirarak oncelikli beceri aciklarini analiz edebilir.
-
-```http
-POST /api/jobs/{id}/skill-gap
-```
-
-## AI Learning Roadmap
-
-Backend, yuklenen CV ve kullaniciya ait is ilanina gore sirali ve kisisellestirilmis ogrenme yol haritasi olusturabilir.
-
-```http
-POST /api/jobs/{id}/learning-roadmap
-```
-
-## AI Interview Preparation
-
-Backend, yuklenen CV ve kullaniciya ait is ilanina gore kisisellestirilmis mulakat hazirligi olusturabilir.
-
-```http
-POST /api/jobs/{id}/interview-prep
-```
-
-Yanitta teknik sorular, davranissal sorular, CV bazli sorular, cevap rehberligi ve isverene sorulabilecek sorular bulunur.
-
-## Application Kanban
-
-Giris yapmis kullanici, basvurularini Kanban kolonlarina gore listeleyebilir ve basvuru durumunu guncelleyebilir.
-
-```http
-GET /api/applications/kanban
-PATCH /api/applications/{id}/status
-```
-
-Kanban kolonlari:
-
-- Applied
-- Interview
-- Offer
-- Rejected
-- Withdrawn
-
-## Dashboard
-
-Giris yapmis kullanici, kariyer ve basvuru durumunu tek endpoint uzerinden ozetleyebilir.
-
-```http
-GET /api/dashboard
-```
-
-Dashboard ozeti:
-
-- Total jobs
-- Total applications
-- Application status distribution
-- Application rate
-- Recent applications
-
-## Docker / Deployment
-
-Docker deployment dort servisle calisir:
-
-- `postgres`: PostgreSQL 18 veritabani
-- `migrations`: EF Core migration'larini uygulayan one-shot .NET SDK container'i
+- `postgres`: PostgreSQL 18 database
+- `migrations`: one-shot EF Core migration container
 - `backend`: ASP.NET Core Web API
-- `frontend`: nginx uzerinden Vite build ciktilari ve `/api` reverse proxy
+- `frontend`: Nginx serving the production frontend and proxying `/api` requests
 
-Prerequisites:
+In Docker, the browser talks to the frontend at `http://localhost:8080`. API calls use relative `/api/...` paths, and Nginx proxies them to `backend:8080` inside the Compose network.
+
+## Screenshots
+
+Screenshots are not included in the repository yet. The application includes screens for authentication, job management, resume management, dashboard summaries, AI match analysis, and AI interview preparation.
+
+## Running With Docker
+
+Prerequisite:
 
 - Docker Desktop
 
-Setup:
+Create a local environment file:
 
-1. `.env.example` dosyasini `.env` olarak kopyala.
-2. Placeholder degerleri gercek deployment secret'lariyla doldur. `.env` dosyasini Git'e commit etme.
-3. `docker compose --env-file .env build`
-4. `docker compose --env-file .env up -d`
+```powershell
+copy .env.example .env
+```
 
-Fresh start sirasinda Compose once PostgreSQL'i hazir hale getirir, sonra `migrations` servisi mevcut EF Core migration'larini uygular. Migration container'i basariyla tamamlaninca exit `0` ile kapanir; backend yalnizca bu adim basarili olduktan sonra baslar. Host makineden PostgreSQL'e manuel baglanmak gerekmez.
+Fill the placeholders in `.env` with local or deployment values. Do not commit `.env`.
 
-Uygulama varsayilan olarak su adresten acilir:
+Build and start the application:
+
+```powershell
+docker compose --env-file .env build
+docker compose --env-file .env up -d
+```
+
+Open the application:
 
 ```text
 http://localhost:8080
 ```
 
-Frontend production build'de `VITE_API_BASE_URL` bos birakilir. Browser `/api/...` isteklerini frontend nginx'e gonderir; nginx bu istekleri Compose network icindeki `backend:8080` adresine proxy eder. Browser tarafinda `backend` container DNS adina dogrudan istek yapilmaz.
-
-`/health` istegi de nginx tarafindan backend'in `/health` endpoint'ine proxy edilir. Backend kullanilamaz durumdaysa frontend container healthcheck'i de basarili gorunmez.
-
-AI endpoint'leri uzun surebilir. `/api` nginx proxy timeout degerleri Interview Prep gibi istekler icin 180 saniye olacak sekilde ayarlanmistir. Backend AI HTTP timeout'u `AI__TimeoutSeconds` ile verilebilir.
-
-Logs:
+View logs:
 
 ```powershell
 docker compose --env-file .env logs -f
 ```
 
-Stop:
+Stop containers:
 
 ```powershell
 docker compose --env-file .env down
 ```
 
-Stop + delete volumes:
+Stop containers and delete persistent volumes:
 
 ```powershell
 docker compose --env-file .env down -v
 ```
 
-`docker compose down -v`, PostgreSQL verisini ve yuklenen CV dosyalarini tutan persistent volume'leri siler. Gercek kullanici verisi olan ortamlarda dikkatli kullan.
+Be careful with `down -v`: it deletes the PostgreSQL data volume and the uploaded resume volume.
 
 ### Docker Migrations
 
-Runtime backend image'ina SDK veya `dotnet-ef` eklenmez. Migration'lar ayri `migrations` servisi tarafindan, .NET SDK image'i ve sabit `dotnet-ef` surumu ile calistirilir:
+Fresh Docker starts are handled by the Compose migration flow:
 
 ```text
-dotnet ef database update --project backend.csproj --no-build
+postgres healthy
+-> migrations completed successfully
+-> backend starts
+-> frontend starts
 ```
 
-`migrations` servisi `postgres` healthy olduktan sonra baslar. Migration basarisiz olursa backend baslamaz. Bu yaklasim tek-instance Compose deployment icin basit ve kontrolludur; coklu instance production ortamlarda migration adimi CI/CD pipeline tarafindan tekil bir deployment adimi olarak yurutulmelidir.
+The runtime backend image does not include the .NET SDK or `dotnet-ef`. Migrations are applied by the separate `migrations` service, which uses the .NET 10 SDK image and a pinned `dotnet-ef` version compatible with the EF Core version in the backend project.
+
+The migration container runs:
+
+```text
+dotnet ef database update --project backend.csproj --configuration Release --no-build
+```
+
+PostgreSQL is not published to host port `5432`; the backend connects to it through the Compose network at `postgres:5432`.
 
 ### Docker Persistence
 
-Compose `postgres_data` named volume'u ile veritabani datasi container restart/recreate sonrasi korunur. PostgreSQL 18 image yapisiyla uyumlu olmasi icin bu volume container icinde `/var/lib/postgresql` yoluna baglanir; image major-version-specific data subdirectory'lerini bu alanin altinda yonetir. Yuklenen CV dosyalari `resume_uploads` named volume'u ile backend icindeki `/app/uploads/resumes` yoluna baglanir.
+- `postgres_data` persists PostgreSQL data and is mounted at `/var/lib/postgresql`, which matches the PostgreSQL 18 Docker image layout.
+- `resume_uploads` persists uploaded resume files and is mounted at `/app/uploads/resumes` in the backend container.
 
-Docker Compose lokal PostgreSQL portu `5432` ile cakismamak icin PostgreSQL servisini host'a publish etmez. Backend Compose network icinde `postgres:5432` adresini kullanir.
+## Local Development
 
-Lokal development akisi degismez:
+Backend:
 
 ```powershell
 cd backend
+dotnet restore
 dotnet run
+```
 
+Frontend:
+
+```powershell
 cd frontend
+npm ci
 npm run dev
 ```
+
+For Vite development, `frontend/.env.example` shows the local API base URL:
+
+```text
+VITE_API_BASE_URL=http://localhost:5062
+```
+
+## Environment Variables
+
+| Variable | Purpose |
+| --- | --- |
+| `POSTGRES_DB` | PostgreSQL database name used by Docker Compose |
+| `POSTGRES_USER` | PostgreSQL application user |
+| `POSTGRES_PASSWORD` | PostgreSQL password |
+| `JWT_KEY` | JWT signing secret used by the backend container |
+| `JWT_ISSUER` | JWT issuer |
+| `JWT_AUDIENCE` | JWT audience |
+| `OPENAI_API_KEY` | OpenAI API key used by AI endpoints |
+| `OPENAI_MODEL` | OpenAI model name |
+| `AI_TIMEOUT_SECONDS` | Backend OpenAI HTTP timeout |
+| `ConnectionStrings__CareerPilotDb` | ASP.NET Core database connection string |
+| `Jwt__Key` | ASP.NET Core JWT signing key configuration |
+| `Jwt__Issuer` | ASP.NET Core JWT issuer configuration |
+| `Jwt__Audience` | ASP.NET Core JWT audience configuration |
+| `AI__ApiKey` | ASP.NET Core OpenAI API key configuration |
+| `AI__Model` | ASP.NET Core OpenAI model configuration |
+| `AI__BaseUrl` | ASP.NET Core OpenAI Responses API URL |
+| `AI__TimeoutSeconds` | ASP.NET Core OpenAI timeout configuration |
+| `Cors__AllowedOrigins__0` | Optional allowed frontend origin for non-proxied deployments |
+
+Use User Secrets for local backend secrets when running without Docker:
+
+```powershell
+cd backend
+dotnet user-secrets set "ConnectionStrings:CareerPilotDb" "<postgres-connection-string>"
+dotnet user-secrets set "Jwt:Key" "<strong-jwt-key>"
+dotnet user-secrets set "AI:ApiKey" "<openai-api-key>"
+```
+
+## API Overview
+
+Selected authenticated endpoints:
+
+- `GET /api/dashboard`
+- `GET /api/jobs`
+- `POST /api/jobs`
+- `GET /api/jobs/{id}`
+- `PUT /api/jobs/{id}`
+- `DELETE /api/jobs/{id}`
+- `POST /api/jobs/{id}/analyze`
+- `POST /api/jobs/{id}/match`
+- `POST /api/jobs/{id}/skill-gap`
+- `POST /api/jobs/{id}/learning-roadmap`
+- `POST /api/jobs/{id}/interview-prep`
+- `GET /api/applications`
+- `GET /api/applications/kanban`
+- `PATCH /api/applications/{id}/status`
+- `GET /api/resumes/me`
+- `GET /api/resumes/me/text`
+
+Authentication endpoints:
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
+
+## CI/CD
+
+GitHub Actions runs on:
+
+- pushes to `main`
+- pull requests targeting `main`
+
+The CI workflow validates:
+
+- backend dependency restore and Release build
+- backend tests when test projects exist
+- frontend `npm ci` and production build
+- Docker image builds for backend, frontend, and migrations
+
+The workflow does not deploy, publish Docker images, or require production secrets.
+
+## Project Structure
+
+```text
+careerpilot-ai/
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── backend/
+│   ├── Controllers/
+│   ├── Data/
+│   ├── Dtos/
+│   ├── Migrations/
+│   ├── Models/
+│   ├── Options/
+│   ├── Services/
+│   ├── Dockerfile
+│   └── Dockerfile.migrations
+├── frontend/
+│   ├── src/
+│   │   ├── i18n/
+│   │   ├── services/
+│   │   └── types/
+│   ├── Dockerfile
+│   └── nginx.conf
+├── compose.yaml
+├── .env.example
+└── README.md
+```
+
+## Security Notes
+
+- Real secrets are not stored in source control.
+- Use `.env` for Docker runtime secrets and ASP.NET Core User Secrets for local backend development.
+- `.env` files are ignored by Git; `.env.example` contains placeholders only.
+- The frontend does not contain OpenAI keys, database credentials, or JWT signing keys.
+- Production CORS uses explicit allowed origins; wildcard origins are not used.
+- Uploaded resume files are stored in a persistent Docker volume and are not committed to the repository.
+
+## Author
+
+Rabia Nur Akdaş
+
+GitHub: [rabiaakdas](https://github.com/rabiaakdas)
