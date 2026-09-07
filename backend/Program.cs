@@ -19,6 +19,7 @@ var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<Jw
     ?? new JwtOptions();
 var aiOptions = builder.Configuration.GetSection(AIOptions.SectionName).Get<AIOptions>()
     ?? new AIOptions();
+var aiRequestTimeoutSeconds = GetAIRequestTimeoutSeconds(aiOptions);
 var corsOptions = builder.Configuration.GetSection(CorsOptions.SectionName).Get<CorsOptions>()
     ?? new CorsOptions();
 
@@ -34,23 +35,23 @@ builder.Services.AddScoped<ITokenService, TokenService>();
 builder.Services.AddScoped<IResumeTextExtractor, ResumeTextExtractor>();
 builder.Services.AddHttpClient<IJobAnalysisService, JobAnalysisService>(client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(aiOptions.TimeoutSeconds);
+    client.Timeout = TimeSpan.FromSeconds(aiRequestTimeoutSeconds);
 });
 builder.Services.AddHttpClient<IResumeJobMatchService, ResumeJobMatchService>(client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(aiOptions.TimeoutSeconds);
+    client.Timeout = TimeSpan.FromSeconds(aiRequestTimeoutSeconds);
 });
 builder.Services.AddHttpClient<ISkillGapAnalysisService, SkillGapAnalysisService>(client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(aiOptions.TimeoutSeconds);
+    client.Timeout = TimeSpan.FromSeconds(aiRequestTimeoutSeconds);
 });
 builder.Services.AddHttpClient<ILearningRoadmapService, LearningRoadmapService>(client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(aiOptions.TimeoutSeconds);
+    client.Timeout = TimeSpan.FromSeconds(aiRequestTimeoutSeconds);
 });
 builder.Services.AddHttpClient<IInterviewPrepService, InterviewPrepService>(client =>
 {
-    client.Timeout = TimeSpan.FromSeconds(aiOptions.TimeoutSeconds);
+    client.Timeout = TimeSpan.FromSeconds(aiRequestTimeoutSeconds);
 });
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -199,4 +200,17 @@ static void ValidateProductionConfiguration(
     {
         throw new InvalidOperationException("Production JWT signing key is too short.");
     }
+}
+
+static int GetAIRequestTimeoutSeconds(AIOptions aiOptions)
+{
+    if (aiOptions.TimeoutSeconds <= 0)
+    {
+        return AIOptions.DefaultTimeoutSeconds;
+    }
+
+    return Math.Clamp(
+        aiOptions.TimeoutSeconds,
+        AIOptions.MinimumTimeoutSeconds,
+        AIOptions.MaximumTimeoutSeconds);
 }

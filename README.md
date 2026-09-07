@@ -50,10 +50,11 @@ Jwt__Audience=<audience>
 AI__ApiKey=<openai-api-key>
 AI__Model=<openai-model>
 AI__BaseUrl=<openai-responses-api-url>
+AI__TimeoutSeconds=<timeout-seconds>
 Cors__AllowedOrigins__0=<frontend-origin>
 ```
 
-Production ortaminda `Jwt__Key` bos veya kisa olmamalidir. CORS originleri acik liste olarak verilmelidir; wildcard origin kullanilmaz. Development icin secret degerleri User Secrets ile saklanabilir.
+Production ortaminda `Jwt__Key` bos veya kisa olmamalidir. `AI__TimeoutSeconds` icin makul aralik 10-300 saniyedir; Interview Prep gibi uzun structured output ureten AI istekleri icin 120 saniye onerilir. CORS originleri acik liste olarak verilmelidir; wildcard origin kullanilmaz. Development icin secret degerleri User Secrets ile saklanabilir.
 
 ## Resume Text Extraction
 

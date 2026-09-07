@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -7,7 +8,10 @@ using Microsoft.Extensions.Options;
 
 namespace CareerPilot.Api.Services.AI;
 
-public class InterviewPrepService(HttpClient httpClient, IOptions<AIOptions> aiOptions) : IInterviewPrepService
+public class InterviewPrepService(
+    HttpClient httpClient,
+    IOptions<AIOptions> aiOptions,
+    ILogger<InterviewPrepService> logger) : IInterviewPrepService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -20,6 +24,11 @@ public class InterviewPrepService(HttpClient httpClient, IOptions<AIOptions> aiO
         "Medium",
         "Hard"
     };
+
+    private const int MaxTechnicalQuestions = 8;
+    private const int MaxBehavioralQuestions = 5;
+    private const int MaxCvBasedQuestions = 5;
+    private const int MaxQuestionsToAskEmployer = 5;
 
     private readonly AIOptions _aiOptions = aiOptions.Value;
 
@@ -47,6 +56,7 @@ public class InterviewPrepService(HttpClient httpClient, IOptions<AIOptions> aiO
             "application/json");
 
         HttpResponseMessage response;
+        var startedAt = Stopwatch.GetTimestamp();
 
         try
         {
@@ -54,6 +64,11 @@ public class InterviewPrepService(HttpClient httpClient, IOptions<AIOptions> aiO
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            logger.LogWarning(
+                "Interview prep AI request timed out after {ElapsedMilliseconds} ms using model {Model}.",
+                Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds,
+                _aiOptions.Model);
+
             throw new InterviewPrepException(
                 InterviewPrepErrorType.Timeout,
                 "AI provider request timed out.");
@@ -162,10 +177,10 @@ public class InterviewPrepService(HttpClient httpClient, IOptions<AIOptions> aiO
         Do not exaggerate the candidate's seniority or claim knowledge that the resume does not support.
         When evidence is unclear, use careful wording such as "not clearly stated in the CV" or "limited evidence in the CV".
         The candidate should be treated as a junior candidate unless the resume and job description clearly indicate otherwise.
-        Generate 5 to 8 technical questions grounded in job requirements and resume evidence. Avoid pure trivia; prefer realistic interview questions.
-        Generate 3 to 5 behavioral questions related to the role. Guidance may suggest STAR, but must not write memorized answers for the candidate.
-        Generate 3 to 5 CV-based questions based directly on real projects, technologies, or experience visible in the resume. Do not invent CV evidence.
-        Generate 3 to 5 thoughtful questions the candidate can ask the employer about team, onboarding, code review, product, and success expectations.
+        Generate 5 to 8 technical questions grounded in job requirements and resume evidence. Never exceed 8 technical questions. Avoid pure trivia; prefer realistic interview questions.
+        Generate 3 to 5 behavioral questions related to the role. Never exceed 5 behavioral questions. Guidance may suggest STAR, but must not write memorized answers for the candidate.
+        Generate 3 to 5 CV-based questions based directly on real projects, technologies, or experience visible in the resume. Never exceed 5 CV-based questions. Do not invent CV evidence.
+        Generate 3 to 5 thoughtful questions the candidate can ask the employer about team, onboarding, code review, product, and success expectations. Never exceed 5 employer questions.
         Use only Easy, Medium, or Hard for technical question difficulty.
         Support Turkish and English text.
         Follow the JSON schema exactly.
@@ -266,6 +281,7 @@ public class InterviewPrepService(HttpClient httpClient, IOptions<AIOptions> aiO
             })
             .GroupBy(question => NormalizeQuestionKey(question.Question), StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
+            .Take(MaxTechnicalQuestions)
             .ToList();
     }
 
@@ -293,6 +309,7 @@ public class InterviewPrepService(HttpClient httpClient, IOptions<AIOptions> aiO
             })
             .GroupBy(question => NormalizeQuestionKey(question.Question), StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
+            .Take(MaxBehavioralQuestions)
             .ToList();
     }
 
@@ -320,6 +337,7 @@ public class InterviewPrepService(HttpClient httpClient, IOptions<AIOptions> aiO
             })
             .GroupBy(question => NormalizeQuestionKey(question.Question), StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
+            .Take(MaxCvBasedQuestions)
             .ToList();
     }
 
@@ -342,6 +360,7 @@ public class InterviewPrepService(HttpClient httpClient, IOptions<AIOptions> aiO
             })
             .GroupBy(NormalizeQuestionKey, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
+            .Take(MaxQuestionsToAskEmployer)
             .ToList();
     }
 
