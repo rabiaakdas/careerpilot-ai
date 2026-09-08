@@ -18,6 +18,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 ConfigureContainerPort(builder.WebHost, builder.Configuration);
 
+var diagnosticStage = GetDiagnosticStage(builder.Configuration);
+
 if (builder.Configuration.GetValue("Deployment:HealthOnly", false))
 {
     var healthApp = builder.Build();
@@ -25,6 +27,12 @@ if (builder.Configuration.GetValue("Deployment:HealthOnly", false))
     healthApp.MapGet("/", () => "CareerPilot AI API diagnostic health mode is running.");
     healthApp.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
     healthApp.Run();
+    return;
+}
+
+if (diagnosticStage is not null)
+{
+    RunDiagnosticStartup(builder, diagnosticStage);
     return;
 }
 
@@ -149,6 +157,201 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static string? GetDiagnosticStage(IConfiguration configuration)
+{
+    var stage = configuration["Deployment:DiagnosticStage"];
+
+    return string.IsNullOrWhiteSpace(stage)
+        ? null
+        : stage.Trim().ToLowerInvariant();
+}
+
+static void RunDiagnosticStartup(WebApplicationBuilder builder, string diagnosticStage)
+{
+    var stageLevel = GetDiagnosticStageLevel(diagnosticStage);
+
+    if (stageLevel < 0)
+    {
+        throw new InvalidOperationException("Deployment:DiagnosticStage is not supported.");
+    }
+
+    if (stageLevel >= 1)
+    {
+        var connectionString = GetDatabaseConnectionString(builder.Configuration);
+
+        builder.Services.AddDbContext<CareerPilotDbContext>(options =>
+            options.UseNpgsql(connectionString));
+    }
+
+    if (stageLevel >= 2)
+    {
+        var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
+            ?? new JwtOptions();
+
+        builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
+        builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+        builder.Services.AddScoped<ITokenService, TokenService>();
+        builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(options =>
+            {
+                options.IncludeErrorDetails = false;
+                options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidIssuer = jwtOptions.Issuer,
+                    ValidateAudience = true,
+                    ValidAudience = jwtOptions.Audience,
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Key)),
+                    ClockSkew = TimeSpan.Zero
+                };
+            });
+        builder.Services.AddAuthorization();
+    }
+
+    if (stageLevel >= 3)
+    {
+        builder.Services.AddControllers();
+    }
+
+    if (stageLevel >= 4)
+    {
+        builder.Services.AddScoped<IResumeTextExtractor, ResumeTextExtractor>();
+    }
+
+    if (stageLevel >= 5)
+    {
+        var aiOptions = builder.Configuration.GetSection(AIOptions.SectionName).Get<AIOptions>()
+            ?? new AIOptions();
+        var aiRequestTimeoutSeconds = GetAIRequestTimeoutSeconds(aiOptions);
+
+        builder.Services.Configure<AIOptions>(builder.Configuration.GetSection(AIOptions.SectionName));
+        builder.Services.AddHttpClient<IJobAnalysisService, JobAnalysisService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(aiRequestTimeoutSeconds);
+        });
+        builder.Services.AddHttpClient<IResumeJobMatchService, ResumeJobMatchService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(aiRequestTimeoutSeconds);
+        });
+        builder.Services.AddHttpClient<ISkillGapAnalysisService, SkillGapAnalysisService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(aiRequestTimeoutSeconds);
+        });
+        builder.Services.AddHttpClient<ILearningRoadmapService, LearningRoadmapService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(aiRequestTimeoutSeconds);
+        });
+        builder.Services.AddHttpClient<IInterviewPrepService, InterviewPrepService>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(aiRequestTimeoutSeconds);
+        });
+    }
+
+    if (stageLevel >= 6)
+    {
+        var corsOptions = builder.Configuration.GetSection(CorsOptions.SectionName).Get<CorsOptions>()
+            ?? new CorsOptions();
+
+        builder.Services.Configure<CorsOptions>(builder.Configuration.GetSection(CorsOptions.SectionName));
+        builder.Services.AddCors(options =>
+        {
+            options.AddPolicy(DevelopmentCorsPolicy, policy =>
+            {
+                var allowedOrigins = GetAllowedOrigins(corsOptions, builder.Environment);
+
+                policy.WithOrigins(allowedOrigins)
+                    .AllowAnyHeader()
+                    .AllowAnyMethod();
+            });
+        });
+        builder.Services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+            options.KnownIPNetworks.Clear();
+            options.KnownProxies.Clear();
+        });
+    }
+
+    var app = builder.Build();
+
+    if (stageLevel >= 6)
+    {
+        app.UseForwardedHeaders();
+
+        if (!app.Environment.IsDevelopment())
+        {
+            app.UseExceptionHandler(errorApp =>
+            {
+                errorApp.Run(async context =>
+                {
+                    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                    context.Response.ContentType = "application/json";
+
+                    await context.Response.WriteAsJsonAsync(new
+                    {
+                        message = "An unexpected error occurred."
+                    });
+                });
+            });
+            app.UseHsts();
+        }
+
+        app.Use(async (context, next) =>
+        {
+            context.Response.Headers.TryAdd("X-Content-Type-Options", "nosniff");
+            context.Response.Headers.TryAdd("X-Frame-Options", "DENY");
+            context.Response.Headers.TryAdd("Referrer-Policy", "no-referrer");
+
+            await next();
+        });
+
+        if (builder.Configuration.GetValue("Deployment:UseHttpsRedirection", true))
+        {
+            app.UseHttpsRedirection();
+        }
+
+        app.UseCors(DevelopmentCorsPolicy);
+    }
+
+    app.MapGet("/", () => $"CareerPilot AI API diagnostic startup stage '{diagnosticStage}' is running.");
+    app.MapGet("/health", () => Results.Ok(new
+    {
+        status = "Healthy",
+        diagnosticStage
+    }));
+
+    if (stageLevel >= 2)
+    {
+        app.UseAuthentication();
+        app.UseAuthorization();
+    }
+
+    if (stageLevel >= 3)
+    {
+        app.MapControllers();
+    }
+
+    app.Run();
+}
+
+static int GetDiagnosticStageLevel(string diagnosticStage)
+{
+    return diagnosticStage switch
+    {
+        "base" => 0,
+        "ef" => 1,
+        "jwt" => 2,
+        "controllers" => 3,
+        "resume" => 4,
+        "ai" => 5,
+        "cors" => 6,
+        _ => -1
+    };
+}
 
 static string[] GetAllowedOrigins(CorsOptions corsOptions, IWebHostEnvironment environment)
 {
