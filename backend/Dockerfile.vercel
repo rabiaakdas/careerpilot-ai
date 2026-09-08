@@ -8,7 +8,7 @@ COPY . ./
 RUN dotnet publish ./backend.csproj -c Release -o /app/publish --no-restore /p:UseAppHost=false \
     && mkdir -p /app/publish/uploads/resumes
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled-extra AS runtime
 WORKDIR /app
 
 ENV PORT=8080
