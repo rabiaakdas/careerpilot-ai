@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using System.Text;
@@ -49,7 +50,7 @@ ValidateProductionConfiguration(builder.Environment, connectionString, jwtOption
 builder.Services.AddDbContext<CareerPilotDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
-ConfigureJwtOptions(builder.Services, builder.Configuration);
+RegisterJwtOptions(builder.Services, jwtOptions);
 builder.Services.Configure<AIOptions>(builder.Configuration.GetSection(AIOptions.SectionName));
 builder.Services.Configure<CorsOptions>(builder.Configuration.GetSection(CorsOptions.SectionName));
 builder.Services.AddScoped<ITokenService, TokenService>();
@@ -188,7 +189,7 @@ static void RunDiagnosticStartup(WebApplicationBuilder builder, string diagnosti
         var jwtOptions = GetJwtOptions(builder.Configuration);
 
         builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
-        ConfigureJwtOptions(builder.Services, builder.Configuration);
+        RegisterJwtOptions(builder.Services, jwtOptions);
         builder.Services.AddScoped<ITokenService, TokenService>();
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
@@ -435,21 +436,26 @@ static JwtOptions GetJwtOptions(IConfiguration configuration)
         ?? new JwtOptions();
 
     ApplyJwtEnvironmentAliases(jwtOptions, configuration);
+    LogJwtDiagnosticsIfEnabled(jwtOptions, configuration);
 
     return jwtOptions;
 }
 
-static void ConfigureJwtOptions(IServiceCollection services, IConfiguration configuration)
+static void RegisterJwtOptions(IServiceCollection services, JwtOptions jwtOptions)
 {
-    services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
-    services.Configure<JwtOptions>(options => ApplyJwtEnvironmentAliases(options, configuration));
+    services.AddSingleton(Options.Create(jwtOptions));
 }
 
 static void ApplyJwtEnvironmentAliases(JwtOptions jwtOptions, IConfiguration configuration)
 {
-    jwtOptions.Key = GetConfiguredValue(configuration["JWT_KEY"], jwtOptions.Key);
-    jwtOptions.Issuer = GetConfiguredValue(configuration["JWT_ISSUER"], jwtOptions.Issuer);
-    jwtOptions.Audience = GetConfiguredValue(configuration["JWT_AUDIENCE"], jwtOptions.Audience);
+    jwtOptions.Key = GetConfiguredValue(GetEnvironmentOrConfigurationValue(configuration, "JWT_KEY"), jwtOptions.Key);
+    jwtOptions.Issuer = GetConfiguredValue(GetEnvironmentOrConfigurationValue(configuration, "JWT_ISSUER"), jwtOptions.Issuer);
+    jwtOptions.Audience = GetConfiguredValue(GetEnvironmentOrConfigurationValue(configuration, "JWT_AUDIENCE"), jwtOptions.Audience);
+}
+
+static string? GetEnvironmentOrConfigurationValue(IConfiguration configuration, string key)
+{
+    return Environment.GetEnvironmentVariable(key) ?? configuration[key];
 }
 
 static string GetConfiguredValue(string? candidateValue, string currentValue)
@@ -457,6 +463,22 @@ static string GetConfiguredValue(string? candidateValue, string currentValue)
     return string.IsNullOrWhiteSpace(candidateValue)
         ? currentValue
         : candidateValue;
+}
+
+static void LogJwtDiagnosticsIfEnabled(JwtOptions jwtOptions, IConfiguration configuration)
+{
+    if (!configuration.GetValue("Deployment:LogJwtDiagnostics", false))
+    {
+        return;
+    }
+
+    Console.WriteLine(
+        "JWT diagnostics: JWT_KEY env present={0}; Jwt:Key config present={1}; final key length={2}; issuer present={3}; audience present={4}",
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("JWT_KEY")),
+        !string.IsNullOrWhiteSpace(configuration["Jwt:Key"]),
+        jwtOptions.Key.Length,
+        !string.IsNullOrWhiteSpace(jwtOptions.Issuer),
+        !string.IsNullOrWhiteSpace(jwtOptions.Audience));
 }
 
 static int GetAIRequestTimeoutSeconds(AIOptions aiOptions)
