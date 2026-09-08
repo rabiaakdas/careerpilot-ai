@@ -3,6 +3,8 @@ obj/
 uploads/resumes/*
 !uploads/resumes/.gitkeep
 .git/
+.env
+.env.*
 .vs/
 .vscode/
 *.user

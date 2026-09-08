@@ -9,13 +9,14 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Npgsql;
 using System.Text;
 
 const string DevelopmentCorsPolicy = "DevelopmentCorsPolicy";
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration.GetConnectionString("CareerPilotDb");
+var connectionString = GetDatabaseConnectionString(builder.Configuration);
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
     ?? new JwtOptions();
 var aiOptions = builder.Configuration.GetSection(AIOptions.SectionName).Get<AIOptions>()
@@ -24,7 +25,7 @@ var aiRequestTimeoutSeconds = GetAIRequestTimeoutSeconds(aiOptions);
 var corsOptions = builder.Configuration.GetSection(CorsOptions.SectionName).Get<CorsOptions>()
     ?? new CorsOptions();
 
-ValidateProductionConfiguration(builder.Configuration, builder.Environment, jwtOptions, aiOptions);
+ValidateProductionConfiguration(builder.Environment, connectionString, jwtOptions, aiOptions);
 
 builder.Services.AddDbContext<CareerPilotDbContext>(options =>
     options.UseNpgsql(connectionString));
@@ -156,8 +157,8 @@ static string[] GetAllowedOrigins(CorsOptions corsOptions, IWebHostEnvironment e
 }
 
 static void ValidateProductionConfiguration(
-    IConfiguration configuration,
     IWebHostEnvironment environment,
+    string? connectionString,
     JwtOptions jwtOptions,
     AIOptions aiOptions)
 {
@@ -168,9 +169,9 @@ static void ValidateProductionConfiguration(
 
     var missingSettings = new List<string>();
 
-    if (string.IsNullOrWhiteSpace(configuration.GetConnectionString("CareerPilotDb")))
+    if (string.IsNullOrWhiteSpace(connectionString))
     {
-        missingSettings.Add("ConnectionStrings:CareerPilotDb");
+        missingSettings.Add("DATABASE_URL or ConnectionStrings:CareerPilotDb");
     }
 
     if (string.IsNullOrWhiteSpace(jwtOptions.Issuer))
@@ -226,4 +227,79 @@ static int GetAIRequestTimeoutSeconds(AIOptions aiOptions)
         aiOptions.TimeoutSeconds,
         AIOptions.MinimumTimeoutSeconds,
         AIOptions.MaximumTimeoutSeconds);
+}
+
+static string? GetDatabaseConnectionString(IConfiguration configuration)
+{
+    var databaseUrl = configuration["DATABASE_URL"];
+
+    if (!string.IsNullOrWhiteSpace(databaseUrl))
+    {
+        return ConvertPostgresDatabaseUrl(databaseUrl);
+    }
+
+    return configuration.GetConnectionString("CareerPilotDb");
+}
+
+static string ConvertPostgresDatabaseUrl(string databaseUrl)
+{
+    if (!Uri.TryCreate(databaseUrl, UriKind.Absolute, out var uri) ||
+        (uri.Scheme != "postgres" && uri.Scheme != "postgresql"))
+    {
+        throw new InvalidOperationException("DATABASE_URL must be a valid PostgreSQL URI.");
+    }
+
+    var userInfoParts = uri.UserInfo.Split(':', 2);
+    var databaseName = Uri.UnescapeDataString(uri.AbsolutePath.TrimStart('/'));
+
+    if (userInfoParts.Length != 2 ||
+        string.IsNullOrWhiteSpace(userInfoParts[0]) ||
+        string.IsNullOrWhiteSpace(databaseName))
+    {
+        throw new InvalidOperationException("DATABASE_URL is missing required PostgreSQL connection parts.");
+    }
+
+    var connectionStringBuilder = new NpgsqlConnectionStringBuilder
+    {
+        Host = uri.Host,
+        Port = uri.Port > 0 ? uri.Port : 5432,
+        Database = databaseName,
+        Username = Uri.UnescapeDataString(userInfoParts[0]),
+        Password = Uri.UnescapeDataString(userInfoParts[1]),
+        SslMode = SslMode.Require
+    };
+
+    ApplyDatabaseUrlQueryOptions(uri.Query, connectionStringBuilder);
+
+    return connectionStringBuilder.ConnectionString;
+}
+
+static void ApplyDatabaseUrlQueryOptions(
+    string query,
+    NpgsqlConnectionStringBuilder connectionStringBuilder)
+{
+    if (string.IsNullOrWhiteSpace(query))
+    {
+        return;
+    }
+
+    foreach (var parameter in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+    {
+        var parts = parameter.Split('=', 2);
+        var key = Uri.UnescapeDataString(parts[0]).Replace("_", string.Empty, StringComparison.OrdinalIgnoreCase);
+        var value = parts.Length == 2
+            ? Uri.UnescapeDataString(parts[1].Replace("+", " "))
+            : string.Empty;
+
+        if (key.Equals("sslmode", StringComparison.OrdinalIgnoreCase) &&
+            Enum.TryParse<SslMode>(value, ignoreCase: true, out var sslMode))
+        {
+            connectionStringBuilder.SslMode = sslMode;
+        }
+        else if (key.Equals("pooling", StringComparison.OrdinalIgnoreCase) &&
+            bool.TryParse(value, out var pooling))
+        {
+            connectionStringBuilder.Pooling = pooling;
+        }
+    }
 }
