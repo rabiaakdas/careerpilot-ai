@@ -25,6 +25,7 @@ var aiRequestTimeoutSeconds = GetAIRequestTimeoutSeconds(aiOptions);
 var corsOptions = builder.Configuration.GetSection(CorsOptions.SectionName).Get<CorsOptions>()
     ?? new CorsOptions();
 
+ConfigureContainerPort(builder.WebHost, builder.Configuration);
 ValidateProductionConfiguration(builder.Environment, connectionString, jwtOptions, aiOptions);
 
 builder.Services.AddDbContext<CareerPilotDbContext>(options =>
@@ -227,6 +228,33 @@ static int GetAIRequestTimeoutSeconds(AIOptions aiOptions)
         aiOptions.TimeoutSeconds,
         AIOptions.MinimumTimeoutSeconds,
         AIOptions.MaximumTimeoutSeconds);
+}
+
+static void ConfigureContainerPort(IWebHostBuilder webHost, IConfiguration configuration)
+{
+    var portValue = configuration["PORT"];
+    var isRunningInContainer = string.Equals(
+        configuration["DOTNET_RUNNING_IN_CONTAINER"],
+        "true",
+        StringComparison.OrdinalIgnoreCase);
+
+    if (string.IsNullOrWhiteSpace(portValue) && !isRunningInContainer)
+    {
+        return;
+    }
+
+    var port = 8080;
+
+    if (!string.IsNullOrWhiteSpace(portValue) &&
+        (!int.TryParse(portValue, out port) || port <= 0 || port > 65535))
+    {
+        throw new InvalidOperationException("PORT must be a valid TCP port.");
+    }
+
+    webHost.ConfigureKestrel(options =>
+    {
+        options.ListenAnyIP(port);
+    });
 }
 
 static string? GetDatabaseConnectionString(IConfiguration configuration)

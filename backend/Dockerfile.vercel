@@ -5,18 +5,18 @@ COPY backend.csproj ./
 RUN dotnet restore ./backend.csproj
 
 COPY . ./
-RUN dotnet publish ./backend.csproj -c Release -o /app/publish --no-restore
+RUN dotnet publish ./backend.csproj -c Release -o /app/publish --no-restore /p:UseAppHost=false \
+    && mkdir -p /app/publish/uploads/resumes
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled AS runtime
 WORKDIR /app
 
 ENV PORT=8080
+ENV DOTNET_EnableDiagnostics=0
 EXPOSE 8080
 
-RUN mkdir -p /app/uploads/resumes && chown -R $APP_UID /app/uploads
+COPY --from=build --chown=app:app /app/publish ./
 
-COPY --from=build /app/publish ./
+USER app
 
-USER $APP_UID
-
-ENTRYPOINT ["sh", "-c", "ASPNETCORE_URLS=http://0.0.0.0:${PORT:-8080} exec dotnet backend.dll"]
+ENTRYPOINT ["dotnet", "backend.dll"]
