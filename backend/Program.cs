@@ -37,8 +37,7 @@ if (diagnosticStage is not null)
 }
 
 var connectionString = GetDatabaseConnectionString(builder.Configuration);
-var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
-    ?? new JwtOptions();
+var jwtOptions = GetJwtOptions(builder.Configuration);
 var aiOptions = builder.Configuration.GetSection(AIOptions.SectionName).Get<AIOptions>()
     ?? new AIOptions();
 var aiRequestTimeoutSeconds = GetAIRequestTimeoutSeconds(aiOptions);
@@ -50,7 +49,7 @@ ValidateProductionConfiguration(builder.Environment, connectionString, jwtOption
 builder.Services.AddDbContext<CareerPilotDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
-builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+ConfigureJwtOptions(builder.Services, builder.Configuration);
 builder.Services.Configure<AIOptions>(builder.Configuration.GetSection(AIOptions.SectionName));
 builder.Services.Configure<CorsOptions>(builder.Configuration.GetSection(CorsOptions.SectionName));
 builder.Services.AddScoped<ITokenService, TokenService>();
@@ -186,11 +185,10 @@ static void RunDiagnosticStartup(WebApplicationBuilder builder, string diagnosti
 
     if (stageLevel >= 2)
     {
-        var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
-            ?? new JwtOptions();
+        var jwtOptions = GetJwtOptions(builder.Configuration);
 
         builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
-        builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+        ConfigureJwtOptions(builder.Services, builder.Configuration);
         builder.Services.AddScoped<ITokenService, TokenService>();
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
@@ -429,6 +427,36 @@ static void ValidateProductionConfiguration(
     {
         throw new InvalidOperationException("Production JWT signing key is too short.");
     }
+}
+
+static JwtOptions GetJwtOptions(IConfiguration configuration)
+{
+    var jwtOptions = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
+        ?? new JwtOptions();
+
+    ApplyJwtEnvironmentAliases(jwtOptions, configuration);
+
+    return jwtOptions;
+}
+
+static void ConfigureJwtOptions(IServiceCollection services, IConfiguration configuration)
+{
+    services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+    services.Configure<JwtOptions>(options => ApplyJwtEnvironmentAliases(options, configuration));
+}
+
+static void ApplyJwtEnvironmentAliases(JwtOptions jwtOptions, IConfiguration configuration)
+{
+    jwtOptions.Key = GetConfiguredValue(configuration["JWT_KEY"], jwtOptions.Key);
+    jwtOptions.Issuer = GetConfiguredValue(configuration["JWT_ISSUER"], jwtOptions.Issuer);
+    jwtOptions.Audience = GetConfiguredValue(configuration["JWT_AUDIENCE"], jwtOptions.Audience);
+}
+
+static string GetConfiguredValue(string? candidateValue, string currentValue)
+{
+    return string.IsNullOrWhiteSpace(candidateValue)
+        ? currentValue
+        : candidateValue;
 }
 
 static int GetAIRequestTimeoutSeconds(AIOptions aiOptions)
