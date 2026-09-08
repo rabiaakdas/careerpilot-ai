@@ -16,6 +16,18 @@ const string DevelopmentCorsPolicy = "DevelopmentCorsPolicy";
 
 var builder = WebApplication.CreateBuilder(args);
 
+ConfigureContainerPort(builder.WebHost, builder.Configuration);
+
+if (builder.Configuration.GetValue("Deployment:HealthOnly", false))
+{
+    var healthApp = builder.Build();
+
+    healthApp.MapGet("/", () => "CareerPilot AI API diagnostic health mode is running.");
+    healthApp.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
+    healthApp.Run();
+    return;
+}
+
 var connectionString = GetDatabaseConnectionString(builder.Configuration);
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
     ?? new JwtOptions();
@@ -25,7 +37,6 @@ var aiRequestTimeoutSeconds = GetAIRequestTimeoutSeconds(aiOptions);
 var corsOptions = builder.Configuration.GetSection(CorsOptions.SectionName).Get<CorsOptions>()
     ?? new CorsOptions();
 
-ConfigureContainerPort(builder.WebHost, builder.Configuration);
 ValidateProductionConfiguration(builder.Environment, connectionString, jwtOptions, aiOptions);
 
 builder.Services.AddDbContext<CareerPilotDbContext>(options =>
